@@ -1,0 +1,86 @@
+export type Role = 'admin' | 'agency' | 'distributor'
+export type MemberRole = Exclude<Role, 'admin'>
+export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
+export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
+export type Page = 'dashboard' | 'notifications' | 'orders' | 'settlement' | 'members' | 'myinfo' | 'notices'
+
+export interface User {
+  id: string
+  username: string
+  passwordHash?: string
+  role: Role | null
+  approvalStatus: ApprovalStatus
+  pricePerShot: number
+  active: boolean
+  requestedAt: string
+  approvedAt: string | null
+  updatedAt: string
+}
+
+export interface SignupDraft {
+  username: string
+  password: string
+  passwordConfirm: string
+}
+
+export interface Order {
+  id: string
+  dbId?: string
+  createdAt: string
+  createdBy: string
+  creatorUsername: string
+  placeUrl: string
+  mid: string
+  storeName: string
+  keyword: string
+  dailyShots: number
+  operationDays: number
+  pricePerShot: number
+  supplyAmount: number
+  vatAmount: number
+  totalAmount: number
+  startDate: string
+  endDate: string
+  status: OrderStatus
+  memo: string
+  activatedAt: string | null
+  stoppedAt: string | null
+  paymentNotifiedAt: string | null
+  updatedAt: string
+}
+
+export interface OrderDraft {
+  placeUrl: string
+  storeName: string
+  keyword: string
+  dailyShots: string
+  operationDays: string
+  memo: string
+}
+
+export interface NotificationItem {
+  id: string
+  createdAt: string
+  userId: string | null
+  role: Role | 'all'
+  title: string
+  message: string
+  read: boolean
+  orderId?: string
+}
+
+export interface Notice {
+  id: string
+  title: string
+  content: string
+  pinned: boolean
+  createdAt: string
+}
+
+export interface AppSettings {
+  cutoffHour: number
+  autoStartHour: number
+  bank: string
+  accountNumber: string
+  accountHolder: string
+}
