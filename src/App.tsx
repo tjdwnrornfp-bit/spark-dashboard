@@ -93,7 +93,9 @@ export default function App() {
 
     const restoreSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
+        if (!supabase) return
+
+const { data, error } = await supabase.auth.getSession()
         if (error) throw error
         const authUserId = data.session?.user?.id
         if (!authUserId) {
@@ -102,7 +104,7 @@ export default function App() {
         }
         const profile = await fetchProfile(authUserId)
         if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) {
-          await supabase.auth.signOut()
+          await supabase?.auth.signOut()
           if (active) setRemoteUser(null)
           return
         }
@@ -156,7 +158,7 @@ export default function App() {
 
     return () => {
       if (refreshTimer !== null) window.clearTimeout(refreshTimer)
-      void supabase.removeChannel(channel)
+      void supabase?.removeChannel(channel)
     }
   }, [refreshRemote, remoteUser])
 
