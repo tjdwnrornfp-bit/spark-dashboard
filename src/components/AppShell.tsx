@@ -2,11 +2,14 @@ import { useState, type ReactNode } from 'react'
 import type { Page, User } from '../domain/types'
 import { Icon, type IconName } from './Icon'
 import { Logo } from './Logo'
+import { ProgramIcon } from './ProgramIcon'
 
-const NAV_ITEMS: Array<{ page: Page; label: string; icon: IconName }> = [
+const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType?: 'spark' | 'spark_plus' | 'spark_s' }> = [
   { page: 'dashboard', label: '대시보드', icon: 'dashboard' },
   { page: 'notifications', label: '알림센터', icon: 'bell' },
-  { page: 'orders', label: '작업접수', icon: 'orders' },
+  { page: 'sparkOrders', label: '스파크 접수', programType: 'spark' },
+  { page: 'sparkPlusOrders', label: '스파크 + 접수', programType: 'spark_plus' },
+  { page: 'sparkSOrders', label: '스파크S 접수', programType: 'spark_s' },
   { page: 'settlement', label: '정산', icon: 'wallet' },
   { page: 'members', label: '회원관리', icon: 'users' },
   { page: 'myinfo', label: '내 정보', icon: 'user' },
@@ -41,7 +44,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
             const badge = item.page === 'notifications' ? unreadCount : 0
             return (
               <button key={item.page} className={page === item.page ? 'nav-active' : ''} onClick={() => navigate(item.page)}>
-                <Icon name={item.icon} size={15} />
+                {item.programType ? <ProgramIcon programType={item.programType} size={16} className="nav-program-icon" /> : <Icon name={item.icon!} size={15} />}
                 <span>{item.label}</span>
                 {badge > 0 && <b>{badge > 99 ? '99+' : badge}</b>}
               </button>

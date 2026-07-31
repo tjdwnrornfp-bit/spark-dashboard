@@ -2,7 +2,14 @@ export type Role = 'admin' | 'agency' | 'distributor'
 export type MemberRole = Exclude<Role, 'admin'>
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
-export type Page = 'dashboard' | 'notifications' | 'orders' | 'settlement' | 'members' | 'myinfo' | 'notices'
+export type ProgramType = 'spark' | 'spark_plus' | 'spark_s'
+export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'settlement' | 'members' | 'myinfo' | 'notices'
+
+export interface ProgramPriceMap {
+  spark: number
+  spark_plus: number
+  spark_s: number
+}
 
 export interface User {
   id: string
@@ -11,6 +18,9 @@ export interface User {
   role: Role | null
   approvalStatus: ApprovalStatus
   pricePerShot: number
+  sparkPricePerShot: number
+  sparkPlusPricePerShot: number
+  sparkSPricePerShot: number
   active: boolean
   requestedAt: string
   approvedAt: string | null
@@ -41,6 +51,7 @@ export interface Order {
   sponsorId: string | null
   sponsorUsername: string | null
   creatorGroupName: string
+  programType: ProgramType
   placeUrl: string
   mid: string
   storeName: string
@@ -62,6 +73,7 @@ export interface Order {
 }
 
 export interface OrderDraft {
+  programType: ProgramType
   placeUrl: string
   storeName: string
   keyword: string
@@ -128,7 +140,7 @@ export interface AppSettings {
 export interface MemberReviewInput {
   member: User
   role: MemberRole
-  pricePerShot: number
+  prices: ProgramPriceMap
   approvalStatus: 'approved' | 'rejected'
   groupName: string
 }

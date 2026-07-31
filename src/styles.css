@@ -772,3 +772,152 @@ td small { margin-top: 4px; font-size: 10px; }
   .settlement-chain-grid .settlement-table { min-width: 700px; }
   .settlement-page-stack > .settlement-orders-panel { min-height: 320px; }
 }
+
+.program-icon {
+  display: inline-block;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
+
+.nav-program-icon {
+  border-radius: 6px;
+}
+
+.program-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.page-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hidden-file-input {
+  display: none;
+}
+
+.program-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 14px;
+}
+
+.program-summary-card {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: inherit;
+}
+
+.program-summary-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.program-summary-body {
+  display: grid;
+  gap: 6px;
+  color: var(--text-subtle, rgba(255,255,255,0.72));
+  font-size: 13px;
+}
+
+.table-action-stack {
+  display: grid;
+  gap: 8px;
+}
+
+.danger-outline {
+  border-color: rgba(255, 92, 92, 0.45) !important;
+  color: #ff8e8e !important;
+}
+
+.bulk-preview-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.bulk-preview-summary > div,
+.success-notice,
+.bulk-error-list {
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(255,255,255,0.04);
+}
+
+.bulk-error-list {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.success-notice {
+  color: #b7f0c2;
+}
+
+.input-with-status {
+  display: grid;
+  gap: 6px;
+}
+
+.input-with-status span {
+  font-size: 12px;
+  opacity: 0.72;
+}
+
+.muted {
+  opacity: 0.62;
+}
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.profile-grid dt {
+  font-size: 12px;
+  opacity: 0.72;
+  margin-bottom: 6px;
+}
+
+.profile-grid dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+.member-static-info {
+  display: grid;
+  gap: 6px;
+  align-content: end;
+}
+
+.inline-message {
+  margin-top: 12px;
+  font-size: 13px;
+  opacity: 0.78;
+}
+
+.inline-message.error {
+  color: #ff9e9e;
+}
+
+@media (max-width: 900px) {
+  .page-header-actions {
+    width: 100%;
+  }
+
+  .bulk-preview-summary {
+    grid-template-columns: 1fr;
+  }
+}

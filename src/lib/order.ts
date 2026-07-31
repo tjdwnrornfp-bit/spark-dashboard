@@ -1,6 +1,7 @@
 import type { AppSettings, Order, OrderDraft, OrderStatus, User } from '../domain/types'
 import { calculateOperationDates, earliestOrderStartDate, isIsoDate, todayInSeoul } from './date'
 import { calculateAmount } from './money'
+import { getUserProgramPrice, labelForProgram, orderPrefixForProgram } from './program'
 
 export function extractMid(url: string): string {
   const value = url.trim()
@@ -25,17 +26,18 @@ export function validateDraft(draft: OrderDraft, now = new Date()): Record<strin
   return errors
 }
 
-function nextSequence(orders: Order[], datePart: string): number {
-  const prefix = `SP-${datePart}-`
-  return orders.filter((order) => order.id.startsWith(prefix)).reduce((max, order) => {
-    const sequence = Number(order.id.slice(prefix.length))
+function nextSequence(orders: Order[], datePart: string, prefix: string): number {
+  const idPrefix = `${prefix}-${datePart}-`
+  return orders.filter((order) => order.id.startsWith(idPrefix)).reduce((max, order) => {
+    const sequence = Number(order.id.slice(idPrefix.length))
     return Number.isFinite(sequence) ? Math.max(max, sequence) : max
   }, 0) + 1
 }
 
 export function createOrder(user: User, draft: OrderDraft, settings: AppSettings, existing: Order[], now = new Date()): Order {
-  if (user.role === 'admin' || user.role === null || user.approvalStatus !== 'approved' || user.pricePerShot <= 0) {
-    throw new Error('승인된 대행사 또는 총판만 작업을 접수할 수 있습니다.')
+  const unitPrice = getUserProgramPrice(user, draft.programType)
+  if (user.role === 'admin' || user.role === null || user.approvalStatus !== 'approved' || unitPrice <= 0) {
+    throw new Error(`${labelForProgram(draft.programType)} 단가가 설정된 승인 회원만 작업을 접수할 수 있습니다.`)
   }
   const validation = validateDraft(draft, now)
   if (Object.keys(validation).length > 0) throw new Error(Object.values(validation)[0])
@@ -43,24 +45,26 @@ export function createOrder(user: User, draft: OrderDraft, settings: AppSettings
   const dailyShots = Number(draft.dailyShots)
   const operationDays = Number(draft.operationDays)
   const dates = calculateOperationDates(operationDays, settings.cutoffHour, now, draft.startDate)
-  const amount = calculateAmount(dailyShots, operationDays, user.pricePerShot)
+  const amount = calculateAmount(dailyShots, operationDays, unitPrice)
   const datePart = todayInSeoul(now).replaceAll('-', '')
+  const prefix = orderPrefixForProgram(draft.programType)
   const iso = now.toISOString()
   return {
-    id: `SP-${datePart}-${String(nextSequence(existing, datePart)).padStart(4, '0')}`,
+    id: `${prefix}-${datePart}-${String(nextSequence(existing, datePart, prefix)).padStart(4, '0')}`,
     createdAt: iso,
     createdBy: user.id,
     creatorUsername: user.username,
     sponsorId: user.sponsorId,
     sponsorUsername: user.sponsorUsername,
     creatorGroupName: user.groupName,
+    programType: draft.programType,
     placeUrl: draft.placeUrl.trim(),
     mid: extractMid(draft.placeUrl),
     storeName: draft.storeName.trim(),
     keyword: draft.keyword.trim(),
     dailyShots,
     operationDays,
-    pricePerShot: user.pricePerShot,
+    pricePerShot: unitPrice,
     ...amount,
     startDate: dates.startDate,
     endDate: dates.endDate,

@@ -1,10 +1,12 @@
 import type { ReactNode } from 'react'
 import { Icon } from '../components/Icon'
+import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
 import type { Notice, Order, Page, PaymentStep, User } from '../domain/types'
 import { formatDate, daysRemaining } from '../lib/date'
 import { formatWon } from '../lib/money'
+import { PROGRAMS, programOrders } from '../lib/program'
 
 function adminRegistrantLabel(order: Order): string {
   const group = order.creatorGroupName.trim() || '미지정 그룹'
@@ -25,7 +27,6 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
   const totalRunningShots = running.reduce((sum, order) => sum + order.dailyShots, 0)
   const totalContractShots = visible.reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
 
-  // 정산 금액은 주문의 최종 판매가가 아니라 현재 사용자가 실제로 정산하는 단계 금액을 기준으로 계산합니다.
   const settlementSteps = user.role === 'admin'
     ? paymentSteps.filter((step) => step.payeeId === user.id)
     : paymentSteps.filter((step) => step.payerId === user.id)
@@ -38,6 +39,17 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
 
   const recent = [...visible].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 7)
   const pinnedNotice = notices.find((notice) => notice.pinned)
+  const programSummaries = PROGRAMS.map((program) => {
+    const list = programOrders(visible, program.type)
+    return {
+      ...program,
+      total: list.length,
+      waiting: list.filter((order) => order.status === '입금대기').length,
+      paid: list.filter((order) => order.status === '입금완료').length,
+      running: list.filter((order) => order.status === '구동중').length,
+      expired: list.filter((order) => order.status === '만료').length,
+    }
+  })
 
   if (user.role !== 'admin') {
     return (
@@ -55,12 +67,18 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
           <MiniStat label="입금 받은 금액" value={formatWon(receivedAmount)} />
         </section>
         <section className="panel compact-panel dashboard-progress-panel">
-          <div className="panel-header"><div><h2>접수 현황</h2><p>구동중인 작업을 한눈에 확인합니다.</p></div></div>
+          <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>세 프로그램의 진행 상태를 한눈에 확인합니다.</p></div></div>
+          <div className="program-dashboard-grid">
+            {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><ProgramIcon programType={summary.type} size={24} /><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span></div></button>)}
+          </div>
+        </section>
+        <section className="panel compact-panel dashboard-progress-panel">
+          <div className="panel-header"><div><h2>구동중 작업</h2><p>현재 구동중인 작업을 한눈에 확인합니다.</p></div></div>
           {running.length === 0 ? <EmptyState text="현재 구동중인 작업이 없습니다." /> : (
             <div className="dashboard-running-list compact-running-grid">
               {running.map((order) => (
                 <article key={order.id} className="dashboard-running-item compact-running-card">
-                  <div className="compact-running-title"><strong>{order.storeName}</strong><span>{order.keyword}</span></div>
+                  <div className="compact-running-title"><strong>[{PROGRAMS.find((program) => program.type === order.programType)?.label}] {order.storeName}</strong><span>{order.keyword}</span></div>
                   <ProgressGauge order={order} now={now} compact />
                 </article>
               ))}
@@ -93,14 +111,20 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
         <MiniStat label="입금 완료 금액" value={formatWon(confirmedAmount)} />
         <MiniStat label="총 정산 금액" value={formatWon(totalAmount)} />
       </section>
+      <section className="panel compact-panel dashboard-progress-panel">
+        <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>스파크, 스파크 +, 스파크S를 분리해 관리합니다.</p></div></div>
+        <div className="program-dashboard-grid">
+          {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><ProgramIcon programType={summary.type} size={24} /><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
+        </div>
+      </section>
       <section className="dashboard-lower-grid">
         <section className="panel compact-panel">
           <div className="panel-header"><div><h2>작업 상태 분포</h2><p>전체 작업 기준</p></div></div>
           <div className="status-distribution"><div className="distribution-bar">{statusCounts.map((item) => <i key={item.label} className={`bar-${item.label}`} style={{ width: `${item.value / total * 100}%` }} />)}</div><div className="distribution-legend">{statusCounts.map((item) => <span key={item.label}><i className={`dot-${item.label}`} />{item.label} <b>{item.value}</b></span>)}</div></div>
         </section>
         <section className="panel compact-panel recent-orders-panel">
-          <div className="panel-header"><div><h2>최근 접수</h2><p>최근 등록된 작업입니다.</p></div><button className="text-button" onClick={() => onNavigate('orders')}>전체 보기 <Icon name="chevron" /></button></div>
-          {recent.length === 0 ? <EmptyState text="접수된 작업이 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>등록 그룹</th><th>상호명</th><th>시작일</th><th>남은기간</th><th>상태</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id}><td>{adminRegistrantLabel(order)}</td><td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td>{formatDate(order.startDate)}</td><td>{String(daysRemaining(order.startDate, order.endDate, now))}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}
+          <div className="panel-header"><div><h2>최근 접수</h2><p>최근 등록된 작업입니다.</p></div><button className="text-button" onClick={() => onNavigate('sparkOrders')}>접수 보기 <Icon name="chevron" /></button></div>
+          {recent.length === 0 ? <EmptyState text="접수된 작업이 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>프로그램</th><th>등록 그룹</th><th>상호명</th><th>시작일</th><th>남은기간</th><th>상태</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id}><td>{PROGRAMS.find((program) => program.type === order.programType)?.label}</td><td>{adminRegistrantLabel(order)}</td><td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td>{formatDate(order.startDate)}</td><td>{String(daysRemaining(order.startDate, order.endDate, now))}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}
         </section>
       </section>
     </div>

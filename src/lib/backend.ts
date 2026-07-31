@@ -33,12 +33,16 @@ function numberValue(value: unknown): number {
 }
 
 export function mapProfile(row: Record<string, unknown>): User {
+  const sparkPrice = numberValue(row.spark_price_per_shot || row.price_per_shot)
   return {
     id: stringValue(row.id),
     username: stringValue(row.username),
     role: (row.role as User['role']) ?? null,
     approvalStatus: (row.approval_status as User['approvalStatus']) ?? 'pending',
-    pricePerShot: numberValue(row.price_per_shot),
+    pricePerShot: sparkPrice,
+    sparkPricePerShot: sparkPrice,
+    sparkPlusPricePerShot: numberValue(row.spark_plus_price_per_shot),
+    sparkSPricePerShot: numberValue(row.spark_s_price_per_shot),
     active: Boolean(row.active),
     requestedAt: stringValue(row.requested_at),
     approvedAt: nullableString(row.approved_at),
@@ -64,6 +68,7 @@ export function mapOrder(row: Record<string, unknown>): Order {
     sponsorId: nullableString(row.sponsor_id),
     sponsorUsername: nullableString(row.sponsor_username),
     creatorGroupName: stringValue(row.creator_group_name),
+    programType: (row.program_type as Order['programType']) ?? 'spark',
     placeUrl: stringValue(row.place_url),
     mid: stringValue(row.mid),
     storeName: stringValue(row.store_name),
@@ -197,6 +202,7 @@ export async function fetchRemoteSnapshot(): Promise<{
 }
 
 export async function createRemoteOrder(params: {
+  programType: Order['programType']
   placeUrl: string
   mid: string
   storeName: string
@@ -208,6 +214,7 @@ export async function createRemoteOrder(params: {
 }): Promise<Order> {
   const client = requiredClient()
   const { data, error } = await client.rpc('create_order', {
+    p_program_type: params.programType,
     p_place_url: params.placeUrl,
     p_mid: params.mid,
     p_store_name: params.storeName,
@@ -224,6 +231,7 @@ export async function createRemoteOrder(params: {
 export async function createRemoteOrdersBulk(drafts: OrderDraft[]): Promise<Order[]> {
   const client = requiredClient()
   const items = drafts.map((draft) => ({
+    program_type: draft.programType,
     place_url: draft.placeUrl.trim(),
     mid: extractMid(draft.placeUrl),
     store_name: draft.storeName.trim(),
@@ -246,12 +254,21 @@ export async function setRemoteOrderStatus(order: Order, status: OrderStatus): P
   return mapOrder(data as Record<string, unknown>)
 }
 
+export async function deleteRemoteOrder(order: Order): Promise<void> {
+  if (!order.dbId) throw new Error('서버 주문 식별자가 없습니다.')
+  const client = requiredClient()
+  const { error } = await client.rpc('delete_order', { p_order_id: order.dbId })
+  if (error) throw error
+}
+
 export async function reviewRemoteMember(params: Omit<MemberReviewInput, 'member'> & { memberId: string }): Promise<User> {
   const client = requiredClient()
-  const { data, error } = await client.rpc('review_member_v6', {
+  const { data, error } = await client.rpc('review_member_v8', {
     p_member_id: params.memberId,
     p_role: params.role,
-    p_price_per_shot: params.pricePerShot,
+    p_spark_price_per_shot: params.prices.spark,
+    p_spark_plus_price_per_shot: params.prices.spark_plus,
+    p_spark_s_price_per_shot: params.prices.spark_s,
     p_approval_status: params.approvalStatus,
     p_group_name: params.groupName,
   })

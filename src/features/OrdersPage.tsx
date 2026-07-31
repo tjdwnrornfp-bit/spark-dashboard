@@ -3,16 +3,18 @@ import { useMemo, useRef, useState } from 'react'
 import { read, utils, writeFileXLSX } from 'xlsx'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
+import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
-import type { AppSettings, Order, OrderDraft, OrderStatus, User } from '../domain/types'
+import type { AppSettings, Order, OrderDraft, OrderStatus, ProgramType, User } from '../domain/types'
 import { calculateOperationDates, daysRemaining, earliestOrderStartDate, formatDate, isIsoDate, todayInSeoul } from '../lib/date'
 import { calculateAmount, formatWon } from '../lib/money'
 import { extractMid, STATUS_ORDER, validateDraft } from '../lib/order'
+import { getUserProgramPrice, labelForProgram, programMeta } from '../lib/program'
 import { PageHeader } from './DashboardPage'
 
-function emptyDraft(now = new Date()): OrderDraft {
-  return { placeUrl: '', storeName: '', keyword: '', dailyShots: '', operationDays: '', startDate: earliestOrderStartDate(now), memo: '' }
+function emptyDraft(programType: ProgramType, now = new Date()): OrderDraft {
+  return { programType, placeUrl: '', storeName: '', keyword: '', dailyShots: '', operationDays: '', startDate: earliestOrderStartDate(now), memo: '' }
 }
 
 const BULK_HEADERS = ['상호명', '대표키워드', '플레이스URL', '일일수량', '구동일수', '시작일', '메모']
@@ -50,11 +52,19 @@ function cell(row: Record<string, unknown>, ...names: string[]): string {
   return String(rawCell(row, ...names) ?? '').trim()
 }
 
+function pad(num: number): string {
+  return String(num).padStart(2, '0')
+}
+
+function dateToLocalIso(date: Date): string {
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+}
+
 function excelDate(value: unknown): string {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10)
+  if (value instanceof Date && !Number.isNaN(value.getTime())) return dateToLocalIso(value)
   if (typeof value === 'number' && Number.isFinite(value)) {
-    const date = new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86_400_000)
-    return date.toISOString().slice(0, 10)
+    const utcDate = new Date(Date.UTC(1899, 11, 30) + Math.round(value) * 86_400_000)
+    return `${utcDate.getUTCFullYear()}-${pad(utcDate.getUTCMonth() + 1)}-${pad(utcDate.getUTCDate())}`
   }
   const text = String(value ?? '').trim()
   if (!text) return ''
@@ -64,19 +74,21 @@ function excelDate(value: unknown): string {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
-export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreateOrdersBulk, onStatusChange }: {
+export function OrdersPage({ user, orders, settings, now, programType, onCreateOrder, onCreateOrdersBulk, onStatusChange, onDeleteOrder }: {
   user: User
   orders: Order[]
   settings: AppSettings
   now: Date
+  programType: ProgramType
   onCreateOrder: (draft: OrderDraft) => Promise<Order>
   onCreateOrdersBulk: (drafts: OrderDraft[]) => Promise<Order[]>
   onStatusChange: (order: Order, status: OrderStatus) => Promise<void>
+  onDeleteOrder: (order: Order) => Promise<void>
 }) {
   const [filter, setFilter] = useState<'전체' | OrderStatus>('전체')
   const [query, setQuery] = useState('')
   const [formOpen, setFormOpen] = useState(false)
-  const [draft, setDraft] = useState<OrderDraft>(() => emptyDraft(now))
+  const [draft, setDraft] = useState<OrderDraft>(() => emptyDraft(programType, now))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [preview, setPreview] = useState<Preview | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
@@ -88,9 +100,14 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const minimumStartDate = earliestOrderStartDate(now)
+  const programLabel = labelForProgram(programType)
+  const unitPrice = getUserProgramPrice(user, programType)
+  const meta = programMeta(programType)
+
+  const sourceOrders = useMemo(() => orders.filter((order) => (order.programType ?? 'spark') === programType), [orders, programType])
 
   const visible = useMemo(() => {
-    const source = user.role === 'admin' ? orders : orders.filter((order) => order.createdBy === user.id)
+    const source = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
     return source
       .filter((order) => filter === '전체' || order.status === filter)
       .filter((order) => {
@@ -98,12 +115,12 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
         return !keyword || [order.id, order.creatorUsername, order.sponsorUsername ?? '', order.creatorGroupName, order.storeName, order.keyword, order.mid].some((value) => value.toLocaleLowerCase('ko-KR').includes(keyword))
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  }, [filter, orders, query, user.id, user.role])
+  }, [filter, sourceOrders, query, user.id, user.role])
 
   const counts = useMemo(() => {
-    const source = user.role === 'admin' ? orders : orders.filter((order) => order.createdBy === user.id)
+    const source = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
     return Object.fromEntries(['전체', ...STATUS_ORDER].map((status) => [status, status === '전체' ? source.length : source.filter((order) => order.status === status).length])) as Record<'전체' | OrderStatus, number>
-  }, [orders, user.id, user.role])
+  }, [sourceOrders, user.id, user.role])
 
   const updateDraft = (field: keyof OrderDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -118,19 +135,20 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
   const toggleForm = () => {
     setFormOpen((current) => {
       const next = !current
-      if (next) setDraft((value) => ({ ...value, startDate: value.startDate >= minimumStartDate ? value.startDate : minimumStartDate }))
+      if (next) setDraft((value) => ({ ...emptyDraft(programType, now), startDate: value.startDate >= minimumStartDate ? value.startDate : minimumStartDate }))
       return next
     })
   }
 
   const openPreview = () => {
+    if (unitPrice <= 0) { window.alert(`${programLabel} 단가가 설정된 승인 회원만 접수할 수 있습니다.`); return }
     const nextErrors = validateDraft(draft, now)
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
     const dailyShots = Number(draft.dailyShots)
     const operationDays = Number(draft.operationDays)
     const dates = calculateOperationDates(operationDays, settings.cutoffHour, now, draft.startDate)
-    setPreview({ draft, mid: extractMid(draft.placeUrl), ...dates, ...calculateAmount(dailyShots, operationDays, user.pricePerShot) })
+    setPreview({ draft, mid: extractMid(draft.placeUrl), ...dates, ...calculateAmount(dailyShots, operationDays, unitPrice) })
   }
 
   const submitOrder = async () => {
@@ -140,7 +158,7 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
       const order = await onCreateOrder(preview.draft)
       setCreatedOrder(order)
       setPreview(null)
-      setDraft(emptyDraft(now))
+      setDraft(emptyDraft(programType, now))
       setErrors({})
       setFormOpen(false)
     } catch (error) {
@@ -156,6 +174,14 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
     try { await onStatusChange(order, status) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
   }
 
+  const deleteOrder = async (order: Order) => {
+    if (changingId) return
+    const ok = window.confirm(`${order.storeName} 작업을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.`)
+    if (!ok) return
+    setChangingId(order.id)
+    try { await onDeleteOrder(order) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
+  }
+
   const toggleAll = () => {
     setSelectedIds((current) => {
       const allSelected = visible.length > 0 && visible.every((order) => current.has(order.id))
@@ -164,18 +190,18 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
   }
 
   const downloadExcel = () => {
-    const target = orders.filter((order) => selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    const target = sourceOrders.filter((order) => selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     if (target.length === 0) return window.alert('다운로드할 작업을 선택해 주세요.')
     const rows: Array<Array<string | number>> = [
-      ['등록자', '상호명', '대표키워드', '플레이스URL', 'MID값', '일일수량', '구동일수', '시작일', '종료일'],
-      ...target.map((order) => [order.creatorUsername, order.storeName, order.keyword, order.placeUrl, order.mid, order.dailyShots, order.operationDays, order.startDate, order.endDate]),
+      ['등록자', '상호명', '대표키워드', '플레이스URL', 'MID값', '일일수량', '구동일수', '시작일', '종료일', '상태'],
+      ...target.map((order) => [order.creatorUsername, order.storeName, order.keyword, order.placeUrl, order.mid, order.dailyShots, order.operationDays, order.startDate, order.endDate, order.status]),
     ]
     const worksheet = utils.aoa_to_sheet(rows)
-    worksheet['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 30 }, { wch: 70 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }]
-    worksheet['!autofilter'] = { ref: `A1:I${rows.length}` }
+    worksheet['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 30 }, { wch: 70 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 14 }]
+    worksheet['!autofilter'] = { ref: `A1:J${rows.length}` }
     const workbook = utils.book_new()
-    utils.book_append_sheet(workbook, worksheet, '작업접수')
-    writeFileXLSX(workbook, `spark-orders-${todayInSeoul(now)}.xlsx`, { compression: true, cellStyles: true })
+    utils.book_append_sheet(workbook, worksheet, meta.sheetName)
+    writeFileXLSX(workbook, `${meta.orderPrefix.toLowerCase()}-orders-${todayInSeoul(now)}.xlsx`, { compression: true, cellStyles: true })
   }
 
   const downloadBulkTemplate = () => {
@@ -183,7 +209,7 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
     worksheet['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 70 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 40 }]
     const workbook = utils.book_new()
     utils.book_append_sheet(workbook, worksheet, '대량접수')
-    writeFileXLSX(workbook, 'spark-bulk-order-template.xlsx', { compression: true })
+    writeFileXLSX(workbook, `${meta.orderPrefix.toLowerCase()}-bulk-order-template.xlsx`, { compression: true })
   }
 
   const readBulkFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -198,6 +224,7 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
       if (rows.length > 500) throw new Error('한 번에 최대 500건까지 접수할 수 있습니다.')
 
       const drafts = rows.map((row) => ({
+        programType,
         storeName: cell(row, '상호명'),
         keyword: cell(row, '대표키워드', '대표 키워드', '키워드'),
         placeUrl: cell(row, '플레이스URL', '플레이스 URL', 'URL'),
@@ -219,6 +246,7 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
 
   const submitBulk = async () => {
     if (bulkSubmitting || bulkDrafts.length === 0 || bulkErrors.length > 0) return
+    if (unitPrice <= 0) { window.alert(`${programLabel} 단가가 설정된 승인 회원만 접수할 수 있습니다.`); return }
     setBulkSubmitting(true)
     try {
       const created = await onCreateOrdersBulk(bulkDrafts)
@@ -232,18 +260,18 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
     }
   }
 
-  const bulkAmount = bulkDrafts.reduce((sum, item) => sum + calculateAmount(Number(item.dailyShots) || 0, Number(item.operationDays) || 0, user.pricePerShot).totalAmount, 0)
+  const bulkAmount = bulkDrafts.reduce((sum, item) => sum + calculateAmount(Number(item.dailyShots) || 0, Number(item.operationDays) || 0, unitPrice).totalAmount, 0)
 
   return (
     <div className="page-stack orders-page-stack">
       <PageHeader
-        title={user.role === 'admin' ? '작업접수' : '스파크 접수'}
-        subtitle={user.role === 'admin' ? '전체 접수 작업과 상태를 관리합니다.' : '플레이스 작업을 개별 또는 엑셀로 대량 접수합니다.'}
+        title={user.role === 'admin' ? `${programLabel} 접수` : `${programLabel} 접수`}
+        subtitle={user.role === 'admin' ? `${programLabel} 접수 작업과 상태를 관리합니다.` : `${programLabel} 작업을 개별 또는 엑셀로 대량 접수합니다.`}
         action={user.role !== 'admin' ? <div className="page-header-actions"><button className="secondary-button small" onClick={downloadBulkTemplate}><Icon name="download" />대량접수 양식</button><button className="secondary-button small" onClick={() => fileInputRef.current?.click()}><Icon name="upload" />대량작업접수</button><button className="primary-button small" onClick={toggleForm}><Icon name={formOpen ? 'close' : 'plus'} />{formOpen ? '접수 닫기' : '접수 신청'}</button><input ref={fileInputRef} className="hidden-file-input" type="file" accept=".xlsx,.xls" onChange={(event) => void readBulkFile(event)} /></div> : undefined}
       />
 
       {user.role !== 'admin' && formOpen && <section className="panel intake-form-panel">
-        <div className="panel-header"><div><h2>스파크 접수 신청</h2><p>회원 단가 {formatWon(user.pricePerShot)} / 타 · 시작일은 익일부터 직접 지정할 수 있습니다.</p></div></div>
+        <div className="panel-header"><div><h2 className="program-heading"><ProgramIcon programType={programType} size={24} />{programLabel} 접수 신청</h2><p>회원 단가 {formatWon(unitPrice)} / 타 · 시작일은 익일부터 직접 지정할 수 있습니다.</p></div></div>
         <div className="form-grid compact-form">
           <Field className="span-2" label="플레이스 URL" required error={errors.placeUrl}><div className="input-with-status"><input value={draft.placeUrl} onChange={(event) => updateDraft('placeUrl', event.target.value)} placeholder="https://m.place.naver.com/place/1234567890/home" />{extractMid(draft.placeUrl) && <span>MID {extractMid(draft.placeUrl)}</span>}</div></Field>
           <Field label="상호명" required error={errors.storeName}><input value={draft.storeName} onChange={(event) => updateDraft('storeName', event.target.value)} placeholder="상호명 입력" maxLength={50} /></Field>
@@ -253,20 +281,20 @@ export function OrdersPage({ user, orders, settings, now, onCreateOrder, onCreat
           <Field label="시작일" required error={errors.startDate}><input type="date" min={minimumStartDate} value={draft.startDate} onChange={(event) => updateDraft('startDate', event.target.value)} /></Field>
           <Field className="span-2" label="메모" error={errors.memo}><textarea value={draft.memo} onChange={(event) => updateDraft('memo', event.target.value)} maxLength={300} rows={3} /></Field>
         </div>
-        <EstimateStrip user={user} draft={draft} settings={settings} now={now} />
-        <div className="form-footer"><button className="secondary-button" onClick={() => { setDraft(emptyDraft(now)); setErrors({}); setFormOpen(false) }}>취소</button><button className="primary-button" onClick={openPreview}>접수 확인</button></div>
+        <EstimateStrip unitPrice={unitPrice} draft={draft} settings={settings} now={now} />
+        <div className="form-footer"><button className="secondary-button" onClick={() => { setDraft(emptyDraft(programType, now)); setErrors({}); setFormOpen(false) }}>취소</button><button className="primary-button" onClick={openPreview}>접수 확인</button></div>
       </section>}
 
       <section className="panel orders-panel fill-panel">
         <div className="order-toolbar"><div className="filter-tabs">{(['전체', ...STATUS_ORDER] as const).map((status) => <button key={status} className={filter === status ? 'active' : ''} onClick={() => setFilter(status)}>{status}<span>{counts[status]}</span></button>)}</div><div className="toolbar-actions"><label className="search-box"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="등록자, 추천인, 그룹명, 상호명, MID 검색" /></label>{user.role === 'admin' && <button className="secondary-button small" onClick={downloadExcel}><Icon name="download" />엑셀</button>}</div></div>
         {visible.length === 0 ? <div className="empty-state fill-empty-state">조건에 맞는 작업이 없습니다.</div> : <>
-          <div className="desktop-table"><table className="orders-table"><thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>추천인</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th><th>MID</th><th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{user.role !== 'admin' && <th>오늘 진행</th>}{user.role === 'admin' && <th>관리</th>}</tr></thead><tbody>{visible.map((order, index) => <tr key={order.id}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); next.has(order.id) ? next.delete(order.id) : next.add(order.id); return next })} /></td>}<td>{index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, now)}</td>{user.role === 'admin' && <><td>{order.creatorUsername}</td><td>{order.sponsorUsername || '관리자 직속'}</td><td>{order.creatorGroupName || '-'}</td></>}<td><strong>{order.storeName}</strong></td><td><a href={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td><td>{order.mid}</td><td>{order.keyword}</td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}타</td><td><StatusBadge status={order.status} /></td>{user.role !== 'admin' && <td>{order.status === '구동중' ? <ProgressGauge order={order} now={now} compact /> : <span className="muted">-</span>}</td>}{user.role === 'admin' && <td><select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{STATUS_ORDER.map((status) => <option key={status}>{status}</option>)}</select></td>}</tr>)}</tbody></table></div>
-          <div className="mobile-order-list">{visible.map((order) => <article key={order.id} className="mobile-order-card"><div><strong>{order.storeName}</strong><StatusBadge status={order.status} /></div><p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}타</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{user.role === 'admin' && <><div><dt>추천인</dt><dd>{order.sponsorUsername || '관리자 직속'}</dd></div><div><dt>그룹명</dt><dd>{order.creatorGroupName || '-'}</dd></div></>}</dl>{order.status === '구동중' && user.role !== 'admin' && <ProgressGauge order={order} now={now} />}{user.role === 'admin' && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{STATUS_ORDER.map((status) => <option key={status}>{status}</option>)}</select>}</article>)}</div>
+          <div className="desktop-table"><table className="orders-table"><thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>추천인</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th><th>MID</th><th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{user.role !== 'admin' && <th>오늘 진행</th>}<th>관리</th></tr></thead><tbody>{visible.map((order, index) => { const canDelete = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status)); return <tr key={order.id}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); next.has(order.id) ? next.delete(order.id) : next.add(order.id); return next })} /></td>}<td>{index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, now)}</td>{user.role === 'admin' && <><td>{order.creatorUsername}</td><td>{order.sponsorUsername || '관리자 직속'}</td><td>{order.creatorGroupName || '-'}</td></>}<td><strong>{order.storeName}</strong></td><td><a href={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td><td>{order.mid}</td><td>{order.keyword}</td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}타</td><td><StatusBadge status={order.status} /></td>{user.role !== 'admin' && <td>{order.status === '구동중' ? <ProgressGauge order={order} now={now} compact /> : <span className="muted">-</span>}</td>}<td><div className="table-action-stack">{user.role === 'admin' && <select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{STATUS_ORDER.map((status) => <option key={status}>{status}</option>)}</select>}{canDelete ? <button className="secondary-button small danger-outline" disabled={changingId === order.id} onClick={() => void deleteOrder(order)}><Icon name="trash" />삭제</button> : <span className="muted">-</span>}</div></td></tr>})}</tbody></table></div>
+          <div className="mobile-order-list">{visible.map((order) => { const canDelete = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status)); return <article key={order.id} className="mobile-order-card"><div><strong>{order.storeName}</strong><StatusBadge status={order.status} /></div><p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}타</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{user.role === 'admin' && <><div><dt>추천인</dt><dd>{order.sponsorUsername || '관리자 직속'}</dd></div><div><dt>그룹명</dt><dd>{order.creatorGroupName || '-'}</dd></div></>}</dl>{order.status === '구동중' && user.role !== 'admin' && <ProgressGauge order={order} now={now} />}{user.role === 'admin' && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{STATUS_ORDER.map((status) => <option key={status}>{status}</option>)}</select>}{canDelete && <button className="secondary-button small danger-outline" disabled={changingId === order.id} onClick={() => void deleteOrder(order)}><Icon name="trash" />삭제</button>}</article>})}</div>
         </>}
       </section>
 
-      {preview && <Modal title="접수 내용 확인" description="금액과 기간을 확인해 주세요." onClose={() => setPreview(null)} footer={<><button className="secondary-button" onClick={() => setPreview(null)}>수정</button><button className="primary-button" disabled={submitting} onClick={() => void submitOrder()}>{submitting ? '접수 중...' : '접수 완료'}</button></>}><div className="preview-grid"><Summary label="상호명" value={preview.draft.storeName} /><Summary label="MID" value={preview.mid} /><Summary label="대표 키워드" value={preview.draft.keyword} /><Summary label="일일 수량" value={`${Number(preview.draft.dailyShots).toLocaleString('ko-KR')}타`} /><Summary label="구동 기간" value={`${preview.startDate} ~ ${preview.endDate}`} wide /><Summary label="1타당 단가" value={formatWon(user.pricePerShot)} /><Summary label="공급가액" value={formatWon(preview.supplyAmount)} /><Summary label="부가세" value={formatWon(preview.vatAmount)} /><Summary label="최종 결제금액" value={formatWon(preview.totalAmount)} strong /></div></Modal>}
-      {createdOrder && <Modal title="접수가 완료되었습니다." onClose={() => setCreatedOrder(null)} footer={<button className="primary-button" onClick={() => setCreatedOrder(null)}>확인</button>}><div className="success-box"><Icon name="check" size={24} /><div><strong>{createdOrder.storeName}</strong><p>입금대기 상태로 접수되었습니다.</p></div></div></Modal>}
+      {preview && <Modal title="접수 내용 확인" description="금액과 기간을 확인해 주세요." onClose={() => setPreview(null)} footer={<><button className="secondary-button" onClick={() => setPreview(null)}>수정</button><button className="primary-button" disabled={submitting} onClick={() => void submitOrder()}>{submitting ? '접수 중...' : '접수 완료'}</button></>}><div className="preview-grid"><Summary label="프로그램" value={programLabel} /><Summary label="상호명" value={preview.draft.storeName} /><Summary label="MID" value={preview.mid} /><Summary label="대표 키워드" value={preview.draft.keyword} /><Summary label="일일 수량" value={`${Number(preview.draft.dailyShots).toLocaleString('ko-KR')}타`} /><Summary label="구동 기간" value={`${preview.startDate} ~ ${preview.endDate}`} wide /><Summary label="1타당 단가" value={formatWon(unitPrice)} /><Summary label="공급가액" value={formatWon(preview.supplyAmount)} /><Summary label="부가세" value={formatWon(preview.vatAmount)} /><Summary label="최종 결제금액" value={formatWon(preview.totalAmount)} strong /></div></Modal>}
+      {createdOrder && <Modal title="접수가 완료되었습니다." onClose={() => setCreatedOrder(null)} footer={<button className="primary-button" onClick={() => setCreatedOrder(null)}>확인</button>}><div className="success-box"><Icon name="check" size={24} /><div><strong>{createdOrder.storeName}</strong><p>{programLabel} 작업이 입금대기 상태로 접수되었습니다.</p></div></div></Modal>}
       {bulkDrafts.length > 0 && <Modal title="대량 작업 접수 확인" description="검증 오류가 없을 때 전체 작업이 한 번에 접수됩니다." onClose={() => { setBulkDrafts([]); setBulkErrors([]) }} footer={<><button className="secondary-button" onClick={() => { setBulkDrafts([]); setBulkErrors([]) }}>취소</button><button className="primary-button" disabled={bulkSubmitting || bulkErrors.length > 0} onClick={() => void submitBulk()}>{bulkSubmitting ? '접수 중...' : `${bulkDrafts.length}건 접수`}</button></>}><div className="bulk-preview-summary"><div><span>작업 수</span><strong>{bulkDrafts.length.toLocaleString('ko-KR')}건</strong></div><div><span>총 결제금액</span><strong>{formatWon(bulkAmount)}</strong></div></div>{bulkErrors.length > 0 ? <div className="bulk-error-list"><strong>수정이 필요한 항목 {bulkErrors.length}개</strong>{bulkErrors.slice(0, 20).map((message) => <p key={message}>{message}</p>)}{bulkErrors.length > 20 && <p>외 {bulkErrors.length - 20}개</p>}</div> : <div className="success-notice">모든 행의 URL, MID, 수량, 기간과 시작일 검증을 통과했습니다.</div>}</Modal>}
     </div>
   )
@@ -276,13 +304,13 @@ function Field({ label, required = false, error, className = '', children }: { l
   return <label className={`field ${className}`}><span>{label}{required && <b>*</b>}</span>{children}{error && <small className="field-error">{error}</small>}</label>
 }
 
-function EstimateStrip({ user, draft, settings, now }: { user: User; draft: OrderDraft; settings: AppSettings; now: Date }) {
+function EstimateStrip({ unitPrice, draft, settings, now }: { unitPrice: number; draft: OrderDraft; settings: AppSettings; now: Date }) {
   const dailyShots = Number(draft.dailyShots) || 0
   const operationDays = Number(draft.operationDays) || 0
-  const amount = calculateAmount(dailyShots, operationDays, user.pricePerShot)
+  const amount = calculateAmount(dailyShots, operationDays, unitPrice)
   const validStart = isIsoDate(draft.startDate) ? draft.startDate : undefined
   const dates = operationDays > 0 ? calculateOperationDates(operationDays, settings.cutoffHour, now, validStart) : { startDate: '-', endDate: '-' }
-  return <div className="estimate-strip"><span>{dailyShots.toLocaleString('ko-KR')}타 × {operationDays.toLocaleString('ko-KR')}일 × {formatWon(user.pricePerShot)} + VAT</span><span>{dates.startDate} ~ {dates.endDate}</span><strong>{formatWon(amount.totalAmount)}</strong></div>
+  return <div className="estimate-strip"><span>{dailyShots.toLocaleString('ko-KR')}타 × {operationDays.toLocaleString('ko-KR')}일 × {formatWon(unitPrice)} + VAT</span><span>{dates.startDate} ~ {dates.endDate}</span><strong>{formatWon(amount.totalAmount)}</strong></div>
 }
 
 function Summary({ label, value, wide = false, strong = false }: { label: string; value: string; wide?: boolean; strong?: boolean }) {
