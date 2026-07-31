@@ -203,6 +203,7 @@ export async function createRemoteOrder(params: {
   keyword: string
   dailyShots: number
   operationDays: number
+  startDate: string
   memo: string
 }): Promise<Order> {
   const client = requiredClient()
@@ -213,6 +214,7 @@ export async function createRemoteOrder(params: {
     p_keyword: params.keyword,
     p_daily_shots: params.dailyShots,
     p_operation_days: params.operationDays,
+    p_start_date: params.startDate,
     p_memo: params.memo,
   })
   if (error) throw error
@@ -228,6 +230,7 @@ export async function createRemoteOrdersBulk(drafts: OrderDraft[]): Promise<Orde
     keyword: draft.keyword.trim(),
     daily_shots: Number(draft.dailyShots),
     operation_days: Number(draft.operationDays),
+    start_date: draft.startDate,
     memo: draft.memo.trim(),
   }))
   const { data, error } = await client.rpc('create_orders_bulk', { p_items: items })

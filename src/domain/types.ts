@@ -67,6 +67,7 @@ export interface OrderDraft {
   keyword: string
   dailyShots: string
   operationDays: string
+  startDate: string
   memo: string
 }
 

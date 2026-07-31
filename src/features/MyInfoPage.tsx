@@ -74,7 +74,7 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
             <div><dt>아이디</dt><dd>{user.username}</dd></div>
             <div><dt>가입 신청일</dt><dd>{formatDateTime(user.requestedAt)}</dd></div>
             <div><dt>승인일</dt><dd>{user.approvedAt ? formatDateTime(user.approvedAt) : '-'}</dd></div>
-            {user.role !== 'admin' && <><div><dt>1타당 단가</dt><dd>{formatWon(user.pricePerShot)}</dd></div><div><dt>추천 코드</dt><dd className="code-value">{user.referralCode || user.username}</dd></div><div><dt>상위 회원</dt><dd>{user.sponsorUsername || '관리자 직속'}</dd></div></>}
+            {user.role !== 'admin' && <><div><dt>1타당 단가</dt><dd>{formatWon(user.pricePerShot)}</dd></div><div><dt>추천 코드</dt><dd className="code-value">{user.referralCode || user.username}</dd></div><div><dt>정산 계정</dt><dd>연결 완료</dd></div></>}
           </dl>
         </article>
 

@@ -1,5 +1,5 @@
 import type { AppSettings, Order, OrderDraft, OrderStatus, User } from '../domain/types'
-import { calculateOperationDates, todayInSeoul } from './date'
+import { calculateOperationDates, earliestOrderStartDate, isIsoDate, todayInSeoul } from './date'
 import { calculateAmount } from './money'
 
 export function extractMid(url: string): string {
@@ -12,13 +12,15 @@ export function extractMid(url: string): string {
   return queryMatch?.[1] ?? ''
 }
 
-export function validateDraft(draft: OrderDraft): Record<string, string> {
+export function validateDraft(draft: OrderDraft, now = new Date()): Record<string, string> {
   const errors: Record<string, string> = {}
   if (!extractMid(draft.placeUrl)) errors.placeUrl = 'MID를 확인할 수 있는 네이버 플레이스 URL을 입력해 주세요.'
   if (!draft.storeName.trim()) errors.storeName = '상호명을 입력해 주세요.'
   if (!draft.keyword.trim()) errors.keyword = '대표 키워드를 입력해 주세요.'
   if (!Number.isInteger(Number(draft.dailyShots)) || Number(draft.dailyShots) < 1) errors.dailyShots = '1 이상의 정수를 입력해 주세요.'
   if (!Number.isInteger(Number(draft.operationDays)) || Number(draft.operationDays) < 1) errors.operationDays = '1 이상의 정수를 입력해 주세요.'
+  if (!isIsoDate(draft.startDate)) errors.startDate = '시작일을 선택해 주세요.'
+  else if (draft.startDate < earliestOrderStartDate(now)) errors.startDate = '시작일은 익일부터 선택할 수 있습니다.'
   if (draft.memo.length > 300) errors.memo = '메모는 300자 이하로 입력해 주세요.'
   return errors
 }
@@ -35,9 +37,12 @@ export function createOrder(user: User, draft: OrderDraft, settings: AppSettings
   if (user.role === 'admin' || user.role === null || user.approvalStatus !== 'approved' || user.pricePerShot <= 0) {
     throw new Error('승인된 대행사 또는 총판만 작업을 접수할 수 있습니다.')
   }
+  const validation = validateDraft(draft, now)
+  if (Object.keys(validation).length > 0) throw new Error(Object.values(validation)[0])
+
   const dailyShots = Number(draft.dailyShots)
   const operationDays = Number(draft.operationDays)
-  const dates = calculateOperationDates(operationDays, settings.cutoffHour, now)
+  const dates = calculateOperationDates(operationDays, settings.cutoffHour, now, draft.startDate)
   const amount = calculateAmount(dailyShots, operationDays, user.pricePerShot)
   const datePart = todayInSeoul(now).replaceAll('-', '')
   const iso = now.toISOString()
@@ -73,7 +78,9 @@ export function transitionOrder(order: Order, nextStatus: OrderStatus, now = new
   return {
     ...order,
     status: nextStatus,
-    activatedAt: nextStatus === '구동중' ? (order.status === '구동중' ? order.activatedAt : iso) : (nextStatus === '입금대기' || nextStatus === '입금완료' ? null : order.activatedAt),
+    activatedAt: nextStatus === '구동중'
+      ? (order.status === '구동중' ? order.activatedAt : iso)
+      : (nextStatus === '입금대기' || nextStatus === '입금완료' ? null : order.activatedAt),
     stoppedAt: nextStatus === '정지' ? iso : null,
     paymentNotifiedAt: nextStatus === '입금완료' && !order.paymentNotifiedAt ? iso : order.paymentNotifiedAt,
     updatedAt: iso,
@@ -87,7 +94,7 @@ export interface ScheduledTransition {
   nextStatus: '구동중' | '만료'
 }
 
-export function applyScheduledTransitions(orders: Order[], members: User[], settings: AppSettings, now = new Date()) {
+export function applyScheduledTransitions(orders: Order[], members: User[], _settings: AppSettings, now = new Date()) {
   const today = todayInSeoul(now)
   const transitions: ScheduledTransition[] = []
   let changed = false

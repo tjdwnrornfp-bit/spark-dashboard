@@ -95,7 +95,7 @@ export const DEMO_NOTIFICATIONS: NotificationItem[] = [
 ]
 
 export const DEMO_NOTICES: Notice[] = [
-  { id: 'notice-1', title: '금일 오후 6시 전 접수건까지 익일 구동됩니다.', content: '입금완료 상태인 작업은 시작일 자정에 구동중으로 변경됩니다.', pinned: true, createdAt: '2026-07-29T01:00:00.000Z' },
+  { id: 'notice-1', title: '작업 시작일을 익일부터 직접 지정할 수 있습니다.', content: '입금완료 상태인 작업은 지정한 시작일 자정에 구동중으로 변경됩니다.', pinned: true, createdAt: '2026-07-29T01:00:00.000Z' },
   { id: 'notice-2', title: '작업 접수 URL과 키워드를 다시 확인해 주세요.', content: '접수 완료 후 URL 및 키워드 변경은 관리자에게 요청해 주세요.', pinned: false, createdAt: '2026-07-20T01:00:00.000Z' },
 ]
 
