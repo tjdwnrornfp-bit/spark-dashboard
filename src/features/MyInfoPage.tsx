@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import { Icon } from '../components/Icon'
+import { Logo } from '../components/Logo'
+import { ProgramIcon } from '../components/ProgramIcon'
 import type { AccountDraft, User } from '../domain/types'
 import { formatWon } from '../lib/money'
 import { getProgramPriceMap } from '../lib/program'
@@ -17,6 +20,7 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
 }) {
   const [passwordOpen, setPasswordOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [nextPassword, setNextPassword] = useState('')
   const [nextPasswordConfirm, setNextPasswordConfirm] = useState('')
@@ -24,6 +28,14 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
   const [savingPassword, setSavingPassword] = useState(false)
   const [savingAccount, setSavingAccount] = useState(false)
   const prices = getProgramPriceMap(user)
+  const roleLabel = user.role === 'admin' ? '관리자' : user.role === 'distributor' ? '총판' : '대행사'
+
+  const copyReferralCode = async () => {
+    if (!user.referralCode) return
+    await navigator.clipboard.writeText(user.referralCode)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1_500)
+  }
 
   const savePassword = async () => {
     if (savingPassword) return
@@ -59,41 +71,89 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
   }
 
   return (
-    <div className="page-stack">
-      <PageHeader title="내 정보" subtitle="계정 정보와 프로그램별 단가, 정산 계좌를 확인합니다." />
-      <section className="panel">
-        <div className="panel-header"><div><h2>기본 정보</h2></div></div>
-        <dl className="profile-grid">
-          <div><dt>아이디</dt><dd>{user.username}</dd></div>
-          <div><dt>회원유형</dt><dd>{user.role === 'admin' ? '관리자' : user.role === 'distributor' ? '총판' : '대행사'}</dd></div>
-          {user.role !== 'admin' && <><div><dt>추천 코드</dt><dd className="code-value">{user.referralCode || user.username}</dd></div><div><dt>그룹명</dt><dd>{user.groupName || '-'}</dd></div></>}
-        </dl>
+    <div className="page-stack myinfo-page-stack">
+      <PageHeader title="내 정보" subtitle="계정과 프로그램별 단가, 정산 정보를 한곳에서 확인합니다." />
+
+      <section className="myinfo-hero">
+        <div className="myinfo-identity">
+          <div className="myinfo-logo-wrap"><Logo compact /></div>
+          <div>
+            <span className="myinfo-eyebrow">MY ACCOUNT</span>
+            <div className="myinfo-name-line"><h2>{user.username}</h2><span className="myinfo-role-badge">{roleLabel}</span><span className="myinfo-active-badge">사용중</span></div>
+            <p>{user.groupName ? `${user.groupName} 그룹` : 'SPARK 작업 관리 계정'}</p>
+          </div>
+        </div>
+        {user.role !== 'admin' && (
+          <div className="myinfo-referral-card">
+            <span>추천 코드</span>
+            <strong>{user.referralCode || user.username}</strong>
+            <button className="myinfo-copy-button" onClick={() => void copyReferralCode()}><Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? '복사됨' : '코드 복사'}</button>
+          </div>
+        )}
       </section>
 
       {user.role !== 'admin' && (
-        <section className="panel">
-          <div className="panel-header"><div><h2>프로그램별 단가</h2><p>정산은 주문 접수 시점의 프로그램별 단가 기준으로 고정됩니다.</p></div></div>
-          <div className="mini-stat-grid payment-stat-grid">
-            <article className="mini-stat"><span>스파크</span><strong>{formatWon(prices.spark)}</strong></article>
-            <article className="mini-stat"><span>스파크 +</span><strong>{formatWon(prices.spark_plus)}</strong></article>
-            <article className="mini-stat"><span>스파크S</span><strong>{formatWon(prices.spark_s)}</strong></article>
+        <section className="panel myinfo-program-panel">
+          <div className="panel-header"><div><h2>프로그램별 단가</h2><p>접수 시점의 단가가 주문과 정산 내역에 고정됩니다.</p></div></div>
+          <div className="myinfo-price-grid">
+            <article className="myinfo-price-card">
+              <ProgramIcon programType="spark" size={48} />
+              <div><span>스파크</span><strong>{formatWon(prices.spark)}</strong><small>1타 기준</small></div>
+            </article>
+            <article className="myinfo-price-card">
+              <ProgramIcon programType="spark_plus" size={48} />
+              <div><span>스파크 +</span><strong>{formatWon(prices.spark_plus)}</strong><small>1타 기준</small></div>
+            </article>
+            <article className="myinfo-price-card">
+              <ProgramIcon programType="spark_s" size={48} />
+              <div><span>스파크S</span><strong>{formatWon(prices.spark_s)}</strong><small>1타 기준</small></div>
+            </article>
           </div>
         </section>
       )}
 
-      <section className="panel">
-        <div className="panel-header"><div><h2>정산 계좌</h2></div><button className="dark-small-button" onClick={() => setAccountOpen((value) => !value)}>{accountOpen ? '닫기' : '수정'}</button></div>
-        <dl className="profile-grid">
-          <div><dt>은행</dt><dd>{user.bank || '-'}</dd></div>
-          <div><dt>계좌번호</dt><dd>{user.accountNumber || '-'}</dd></div>
-          <div><dt>예금주</dt><dd>{user.accountHolder || '-'}</dd></div>
-        </dl>
-        {accountOpen && <div className="member-editor"><div className="member-editor-grid"><label><span>은행</span><input value={account.bank} onChange={(event) => setAccount((current) => ({ ...current, bank: event.target.value }))} /></label><label><span>계좌번호</span><input value={account.accountNumber} onChange={(event) => setAccount((current) => ({ ...current, accountNumber: event.target.value }))} /></label><label><span>예금주</span><input value={account.accountHolder} onChange={(event) => setAccount((current) => ({ ...current, accountHolder: event.target.value }))} /></label></div><div className="member-editor-actions"><button className="primary-button" disabled={savingAccount} onClick={() => void saveAccount()}>{savingAccount ? '저장 중...' : '계좌 저장'}</button></div></div>}
-      </section>
+      <section className="myinfo-detail-grid">
+        <section className="panel myinfo-detail-card">
+          <div className="myinfo-detail-header">
+            <div className="myinfo-section-icon"><Icon name="wallet" size={20} /></div>
+            <div><h2>정산 계좌</h2><p>하위 대행사에게 표시되는 입금 계좌입니다.</p></div>
+            <button className="secondary-button small" onClick={() => { setAccount({ bank: user.bank, accountNumber: user.accountNumber, accountHolder: user.accountHolder }); setAccountOpen((value) => !value) }}>{accountOpen ? '닫기' : '계좌 수정'}</button>
+          </div>
+          <dl className="myinfo-info-tiles">
+            <div><dt>은행</dt><dd>{user.bank || '미등록'}</dd></div>
+            <div><dt>계좌번호</dt><dd>{user.accountNumber || '미등록'}</dd></div>
+            <div><dt>예금주</dt><dd>{user.accountHolder || '미등록'}</dd></div>
+          </dl>
+          {accountOpen && (
+            <div className="myinfo-inline-editor">
+              <div className="myinfo-editor-grid">
+                <label><span>은행</span><input value={account.bank} onChange={(event) => setAccount((current) => ({ ...current, bank: event.target.value }))} placeholder="은행명" /></label>
+                <label><span>계좌번호</span><input value={account.accountNumber} onChange={(event) => setAccount((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="계좌번호" /></label>
+                <label><span>예금주</span><input value={account.accountHolder} onChange={(event) => setAccount((current) => ({ ...current, accountHolder: event.target.value }))} placeholder="예금주" /></label>
+              </div>
+              <div className="myinfo-editor-actions"><button className="secondary-button" onClick={() => setAccountOpen(false)}>취소</button><button className="primary-button" disabled={savingAccount} onClick={() => void saveAccount()}>{savingAccount ? '저장 중...' : '계좌 저장'}</button></div>
+            </div>
+          )}
+        </section>
 
-      <section className="panel">
-        <div className="panel-header"><div><h2>비밀번호 변경</h2></div><button className="dark-small-button" onClick={() => setPasswordOpen((value) => !value)}>{passwordOpen ? '닫기' : '변경'}</button></div>
-        {passwordOpen && <div className="member-editor"><div className="member-editor-grid"><label><span>현재 비밀번호</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label><label><span>새 비밀번호</span><input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} /></label><label><span>새 비밀번호 확인</span><input type="password" value={nextPasswordConfirm} onChange={(event) => setNextPasswordConfirm(event.target.value)} /></label></div><div className="member-editor-actions"><button className="primary-button" disabled={savingPassword} onClick={() => void savePassword()}>{savingPassword ? '저장 중...' : '비밀번호 저장'}</button></div></div>}
+        <section className="panel myinfo-detail-card">
+          <div className="myinfo-detail-header">
+            <div className="myinfo-section-icon security"><Icon name="lock" size={20} /></div>
+            <div><h2>로그인 보안</h2><p>주기적으로 비밀번호를 변경해 계정을 보호하세요.</p></div>
+            <button className="secondary-button small" onClick={() => setPasswordOpen((value) => !value)}>{passwordOpen ? '닫기' : '비밀번호 변경'}</button>
+          </div>
+          {!passwordOpen && <div className="myinfo-security-state"><span className="myinfo-security-dot" /><div><strong>비밀번호가 설정되어 있습니다.</strong><p>현재 비밀번호는 화면에 표시되지 않습니다.</p></div></div>}
+          {passwordOpen && (
+            <div className="myinfo-inline-editor">
+              <div className="myinfo-password-grid">
+                <label><span>현재 비밀번호</span><input type="password" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} /></label>
+                <label><span>새 비밀번호</span><input type="password" value={nextPassword} onChange={(event) => setNextPassword(event.target.value)} /></label>
+                <label><span>새 비밀번호 확인</span><input type="password" value={nextPasswordConfirm} onChange={(event) => setNextPasswordConfirm(event.target.value)} /></label>
+              </div>
+              <div className="myinfo-editor-actions"><button className="secondary-button" onClick={() => setPasswordOpen(false)}>취소</button><button className="primary-button" disabled={savingPassword} onClick={() => void savePassword()}>{savingPassword ? '저장 중...' : '비밀번호 저장'}</button></div>
+            </div>
+          )}
+        </section>
       </section>
     </div>
   )

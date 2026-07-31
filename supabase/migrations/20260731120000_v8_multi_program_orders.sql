@@ -31,7 +31,7 @@ end $$;
 
 create or replace function public.review_member_v8(
   p_member_id uuid,
-  p_role public.user_role,
+  p_role public.member_role,
   p_spark_price_per_shot integer,
   p_spark_plus_price_per_shot integer,
   p_spark_s_price_per_shot integer,
@@ -78,7 +78,7 @@ begin
   end if;
 
   update public.profiles
-  set role = case when target.sponsor_id is not null then 'agency'::public.user_role else p_role end,
+  set role = case when target.sponsor_id is not null then 'agency'::public.member_role else p_role end,
       approval_status = p_approval_status,
       active = (p_approval_status = 'approved'),
       approved_at = case when p_approval_status = 'approved' then coalesce(target.approved_at, now()) else target.approved_at end,
@@ -104,8 +104,8 @@ begin
 end;
 $$;
 
-revoke all on function public.review_member_v8(uuid, public.user_role, integer, integer, integer, public.approval_status, text) from public, anon;
-grant execute on function public.review_member_v8(uuid, public.user_role, integer, integer, integer, public.approval_status, text) to authenticated;
+revoke all on function public.review_member_v8(uuid, public.member_role, integer, integer, integer, public.approval_status, text) from public, anon;
+grant execute on function public.review_member_v8(uuid, public.member_role, integer, integer, integer, public.approval_status, text) to authenticated;
 
 drop function if exists public.create_orders_bulk(jsonb);
 drop function if exists public.create_order(text, text, text, text, integer, integer, date, text);

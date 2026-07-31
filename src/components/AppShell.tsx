@@ -44,7 +44,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
             const badge = item.page === 'notifications' ? unreadCount : 0
             return (
               <button key={item.page} className={page === item.page ? 'nav-active' : ''} onClick={() => navigate(item.page)}>
-                {item.programType ? <ProgramIcon programType={item.programType} size={16} className="nav-program-icon" /> : <Icon name={item.icon!} size={15} />}
+                {item.programType ? <ProgramIcon programType={item.programType} size={34} className="nav-program-icon" /> : <Icon name={item.icon!} size={15} />}
                 <span>{item.label}</span>
                 {badge > 0 && <b>{badge > 99 ? '99+' : badge}</b>}
               </button>

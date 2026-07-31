@@ -9,6 +9,6 @@ const SOURCES: Record<ProgramType, string> = {
   spark_s: sparkSIcon,
 }
 
-export function ProgramIcon({ programType, size = 18, className = '' }: { programType: ProgramType; size?: number; className?: string }) {
-  return <img className={`program-icon ${className}`.trim()} src={SOURCES[programType]} alt="" width={size} height={size} />
+export function ProgramIcon({ programType, size = 36, className = '' }: { programType: ProgramType; size?: number; className?: string }) {
+  return <img className={`program-icon ${className}`.trim()} src={SOURCES[programType]} alt="" width={size} height={size} draggable={false} />
 }
