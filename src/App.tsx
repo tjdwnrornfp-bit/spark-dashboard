@@ -132,7 +132,7 @@ export default function App() {
     let active = true
     const restoreSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
+        const { data, error } = await supabase?.auth.getSession()
         if (error) throw error
         const authUserId = data.session?.user?.id
         if (!authUserId) { if (active) setRemoteUser(null); return }
