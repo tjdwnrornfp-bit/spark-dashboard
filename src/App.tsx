@@ -132,15 +132,16 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
+    const client = supabase
     let active = true
     const restoreSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession()
+        const { data, error } = await client.auth.getSession()
         if (error) throw error
         const authUserId = data.session?.user?.id
         if (!authUserId) { if (active) setRemoteUser(null); return }
         const profile = await fetchProfile(authUserId)
-        if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) { await supabase.auth.signOut(); if (active) setRemoteUser(null); return }
+        if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) { await client.auth.signOut(); if (active) setRemoteUser(null); return }
         if (active) setRemoteUser(profile)
       } catch (error) {
         if (active) setRemoteError(errorMessage(error, '로그인 세션을 확인하지 못했습니다.'))
@@ -149,7 +150,7 @@ export default function App() {
       }
     }
     void restoreSession()
-    const { data } = supabase.auth.onAuthStateChange((event: string, session: { user?: { id?: string } } | null) => {
+    const { data } = client.auth.onAuthStateChange((event: string, session: { user?: { id?: string } } | null) => {
       if (event === 'SIGNED_OUT' || !session?.user?.id) { setRemoteUser(null); setRemoteMembers([]); setRemoteOrders([]); setRemotePaymentSteps([]); setRemoteNotifications([]); setRemoteNotices([]); return }
       window.setTimeout(() => void fetchProfile(session.user?.id ?? '').then((profile) => { if (profile?.approvalStatus === 'approved' && profile.active && profile.role !== null) setRemoteUser(profile) }).catch(() => undefined), 0)
     })
@@ -158,10 +159,11 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !remoteUser) return
+    const client = supabase
     void refreshRemote()
     let refreshTimer: number | null = null
     const scheduleRefresh = () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); refreshTimer = window.setTimeout(() => void refreshRemote(), 180) }
-    const channel = supabase.channel(`spark-dashboard-v8-${remoteUser.id}`)
+    const channel = client.channel(`spark-dashboard-v8-${remoteUser.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_steps' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleRefresh)
@@ -169,7 +171,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, scheduleRefresh)
       .subscribe()
-    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void supabase.removeChannel(channel) }
+    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void client.removeChannel(channel) }
   }, [refreshRemote, remoteUser])
 
   useEffect(() => {
