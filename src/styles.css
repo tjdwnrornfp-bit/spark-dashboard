@@ -682,3 +682,93 @@ td small { margin-top: 4px; font-size: 10px; }
   .page-header-actions button { width: 100%; justify-content: center; }
   .bulk-preview-summary { grid-template-columns: 1fr; }
 }
+
+/* v7 settlement accuracy, selectable start dates, and compact progress cards */
+.settlement-cards-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.settlement-cards .received-stat strong { color: #14845f; }
+.agency-payment-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.agency-payment-grid .mini-stat:nth-child(4) strong { color: #14845f; }
+
+.settlement-chain-grid { gap: 16px; }
+.admin-settlement-grid { grid-template-columns: 1fr; }
+.admin-settlement-grid > .panel { min-height: 470px; }
+.settlement-incoming-panel,
+.settlement-outgoing-panel { min-width: 0; }
+.settlement-chain-grid .desktop-table { width: 100%; overflow-x: auto; }
+.settlement-chain-grid .settlement-table {
+  width: 100%;
+  min-width: 0;
+  table-layout: fixed;
+}
+.settlement-chain-grid .settlement-table th,
+.settlement-chain-grid .settlement-table td {
+  padding-left: 9px;
+  padding-right: 9px;
+  overflow-wrap: anywhere;
+}
+.settlement-incoming-table th:nth-child(1) { width: 25%; }
+.settlement-incoming-table th:nth-child(2) { width: 16%; }
+.settlement-incoming-table th:nth-child(3) { width: 12%; }
+.settlement-incoming-table th:nth-child(4) { width: 16%; }
+.settlement-incoming-table th:nth-child(5) { width: 18%; }
+.settlement-incoming-table th:nth-child(6) { width: 13%; }
+.settlement-outgoing-table th:nth-child(1) { width: 38%; }
+.settlement-outgoing-table th:nth-child(2) { width: 18%; }
+.settlement-outgoing-table th:nth-child(3) { width: 22%; }
+.settlement-outgoing-table th:nth-child(4) { width: 22%; }
+.payment-confirm-button { width: 100%; min-width: 72px; padding-left: 8px; padding-right: 8px; white-space: nowrap; }
+.settlement-orders-panel { min-height: 360px !important; }
+.settlement-page-stack > .settlement-orders-panel { min-height: clamp(360px, calc(100vh - 650px), 560px); }
+
+.compact-running-grid {
+  grid-template-columns: repeat(auto-fill, minmax(220px, 260px));
+  align-content: start;
+  justify-content: start;
+  gap: 12px;
+}
+.compact-running-card {
+  display: flex;
+  min-height: 138px;
+  padding: 16px;
+  flex-direction: column;
+  justify-content: space-between;
+  background: #fff;
+}
+.compact-running-title { min-width: 0; }
+.compact-running-title strong {
+  display: block;
+  overflow: hidden;
+  color: #1c2430;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.compact-running-title span {
+  display: -webkit-box;
+  overflow: hidden;
+  margin-top: 7px;
+  color: #7a828e;
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+.compact-running-card .progress-compact { width: 100%; min-width: 0; }
+.compact-running-card .progress-labels { font-size: 11px; }
+.compact-running-card .progress-labels strong { font-size: 12px; }
+
+@media (max-width: 1280px) {
+  .settlement-cards-four,
+  .agency-payment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .settlement-chain-grid { grid-template-columns: 1fr; }
+  .admin-settlement-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 760px) {
+  .settlement-cards-four,
+  .agency-payment-grid { grid-template-columns: 1fr; }
+  .compact-running-grid { grid-template-columns: 1fr; }
+  .compact-running-card { min-height: 124px; }
+  .settlement-chain-grid .settlement-table { min-width: 700px; }
+  .settlement-page-stack > .settlement-orders-panel { min-height: 320px; }
+}

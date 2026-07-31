@@ -32,9 +32,35 @@ export function addDays(dateString: string, amount: number): string {
   return new Date(Date.UTC(year, month - 1, day + amount)).toISOString().slice(0, 10)
 }
 
-export function calculateOperationDates(operationDays: number, cutoffHour: number, now = new Date()) {
-  const current = seoulDateTimeParts(now)
-  const startDate = addDays(current.date, current.hour >= cutoffHour ? 2 : 1)
+export function todayInSeoul(now = new Date()): string {
+  return seoulDateTimeParts(now).date
+}
+
+export function earliestOrderStartDate(now = new Date()): string {
+  return addDays(todayInSeoul(now), 1)
+}
+
+export function isIsoDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false
+  const [year, month, day] = value.split('-').map(Number)
+  const checked = new Date(Date.UTC(year, month - 1, day))
+  return checked.getUTCFullYear() === year && checked.getUTCMonth() === month - 1 && checked.getUTCDate() === day
+}
+
+/**
+ * 신규 접수는 최소 익일부터 시작할 수 있습니다.
+ * cutoffHour 인자는 이전 버전 호출부와의 호환성을 위해 유지합니다.
+ */
+export function calculateOperationDates(
+  operationDays: number,
+  _cutoffHour: number,
+  now = new Date(),
+  requestedStartDate?: string,
+) {
+  const minimum = earliestOrderStartDate(now)
+  const startDate = requestedStartDate && isIsoDate(requestedStartDate) && requestedStartDate >= minimum
+    ? requestedStartDate
+    : minimum
   return { startDate, endDate: addDays(startDate, operationDays - 1) }
 }
 
@@ -46,10 +72,6 @@ export function hasReachedSeoulTime(targetDate: string, targetHour: number, now 
 
 export function seoulTimeIso(dateString: string, hour: number): string {
   return new Date(`${dateString}T${String(hour).padStart(2, '0')}:00:00+09:00`).toISOString()
-}
-
-export function todayInSeoul(now = new Date()): string {
-  return seoulDateTimeParts(now).date
 }
 
 export function formatDate(dateString: string): string {

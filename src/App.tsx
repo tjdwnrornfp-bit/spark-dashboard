@@ -121,7 +121,7 @@ export default function App() {
       if (refreshedSelf && refreshedSelf.updatedAt !== remoteUser.updatedAt) setRemoteUser(refreshedSelf)
       setRemoteError('')
     } catch (error) {
-      setRemoteError(errorMessage(error, '서버 데이터를 불러오지 못했습니다. v6 데이터베이스 업데이트 SQL 적용 여부를 확인해 주세요.'))
+      setRemoteError(errorMessage(error, '서버 데이터를 불러오지 못했습니다. v7 데이터베이스 업데이트 SQL 적용 여부를 확인해 주세요.'))
     }
   }, [remoteUser])
 
@@ -132,13 +132,12 @@ export default function App() {
     let active = true
     const restoreSession = async () => {
       try {
-        if (!supabase) return;
         const { data, error } = await supabase.auth.getSession()
         if (error) throw error
         const authUserId = data.session?.user?.id
         if (!authUserId) { if (active) setRemoteUser(null); return }
         const profile = await fetchProfile(authUserId)
-        if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) { await supabase?.auth.signOut(); if (active) setRemoteUser(null); return }
+        if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) { await supabase.auth.signOut(); if (active) setRemoteUser(null); return }
         if (active) setRemoteUser(profile)
       } catch (error) { if (active) setRemoteError(errorMessage(error, '로그인 세션을 확인하지 못했습니다.')) } finally { if (active) setAuthReady(true) }
     }
@@ -155,14 +154,14 @@ export default function App() {
     void refreshRemote()
     let refreshTimer: number | null = null
     const scheduleRefresh = () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); refreshTimer = window.setTimeout(() => void refreshRemote(), 180) }
-    const channel = supabase.channel(`spark-dashboard-v6-${remoteUser.id}`)
+    const channel = supabase.channel(`spark-dashboard-v7-${remoteUser.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_steps' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, scheduleRefresh).subscribe()
-    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void supabase?.removeChannel(channel) }
+    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void supabase.removeChannel(channel) }
   }, [refreshRemote, remoteUser])
 
   useEffect(() => {
@@ -184,7 +183,7 @@ export default function App() {
         if (error) throw error
         const profile = data.user?.id ? await fetchProfile(data.user.id) : null
         if (!profile) throw new Error('회원 정보를 찾을 수 없습니다.')
-        if (profile.approvalStatus === 'pending') { await supabase.auth.signOut(); return { ok: false, message: profile.sponsorUsername ? `${profile.sponsorUsername} 회원의 가입 승인 대기 중입니다.` : '관리자 승인 대기 중입니다.' } }
+        if (profile.approvalStatus === 'pending') { await supabase.auth.signOut(); return { ok: false, message: '가입 승인 대기 중입니다.' } }
         if (profile.approvalStatus === 'rejected') { await supabase.auth.signOut(); return { ok: false, message: '가입 신청이 반려된 계정입니다.' } }
         if (!profile.active || profile.role === null) { await supabase.auth.signOut(); return { ok: false, message: '사용이 중지되었거나 회원 유형이 지정되지 않았습니다.' } }
         setRemoteUser(profile); setPage('dashboard'); return { ok: true, message: '' }
@@ -192,7 +191,7 @@ export default function App() {
     }
     const member = localMembers.find((item) => normalizeUsername(item.username) === normalizeUsername(username))
     if (!member || member.passwordHash !== await hashPassword(password)) return { ok: false, message: '아이디 또는 비밀번호가 올바르지 않습니다.' }
-    if (member.approvalStatus === 'pending') return { ok: false, message: member.sponsorUsername ? `${member.sponsorUsername} 회원의 가입 승인 대기 중입니다.` : '관리자 승인 대기 중입니다.' }
+    if (member.approvalStatus === 'pending') return { ok: false, message: '가입 승인 대기 중입니다.' }
     if (member.approvalStatus === 'rejected') return { ok: false, message: '가입 신청이 반려된 계정입니다.' }
     if (!member.active || member.role === null) return { ok: false, message: '사용이 중지되었거나 회원 유형이 지정되지 않았습니다.' }
     setLocalSessionUserId(member.id); setPage('dashboard'); return { ok: true, message: '' }
@@ -206,7 +205,7 @@ export default function App() {
         const { error } = await supabase.auth.signUp({ email: await usernameToAuthEmail(username), password: await passwordToAuthSecret(draft.password), options: { data: { username, username_key: normalizeUsername(username), referral_code: referral } } })
         if (error) throw error
         await supabase.auth.signOut()
-        return { ok: true, message: referral ? '가입 신청이 완료되었습니다. 추천인이 단가를 지정해 승인하면 로그인할 수 있습니다.' : '가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.' }
+        return { ok: true, message: '가입 신청이 완료되었습니다. 승인 후 로그인할 수 있습니다.' }
       } catch (error) { return { ok: false, message: errorMessage(error, '가입 신청을 처리하지 못했습니다.') } }
     }
     if (localMembers.some((member) => normalizeUsername(member.username) === normalizeUsername(username))) return { ok: false, message: '이미 사용 중이거나 가입 신청된 아이디입니다.' }
@@ -222,13 +221,13 @@ export default function App() {
       ...(admin ? [{ id: crypto.randomUUID(), createdAt: nowIso, userId: admin.id, role: 'admin', title: '회원가입 신청', message: sponsor ? `${username} 회원이 ${sponsor.username} 추천으로 가입했습니다.` : `${username} 회원의 가입 승인이 필요합니다.`, read: false } as NotificationItem] : []),
       ...current,
     ])
-    return { ok: true, message: sponsor ? '가입 신청이 완료되었습니다. 추천인 승인 후 로그인할 수 있습니다.' : '가입 신청이 완료되었습니다. 관리자 승인 후 로그인할 수 있습니다.' }
+    return { ok: true, message: '가입 신청이 완료되었습니다. 승인 후 로그인할 수 있습니다.' }
   }
 
   const handleCreateOrder = async (draft: OrderDraft): Promise<Order> => {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (isSupabaseConfigured) {
-      const order = await createRemoteOrder({ placeUrl: draft.placeUrl.trim(), mid: extractMid(draft.placeUrl), storeName: draft.storeName.trim(), keyword: draft.keyword.trim(), dailyShots: Number(draft.dailyShots), operationDays: Number(draft.operationDays), memo: draft.memo.trim() })
+      const order = await createRemoteOrder({ placeUrl: draft.placeUrl.trim(), mid: extractMid(draft.placeUrl), storeName: draft.storeName.trim(), keyword: draft.keyword.trim(), dailyShots: Number(draft.dailyShots), operationDays: Number(draft.operationDays), startDate: draft.startDate, memo: draft.memo.trim() })
       setRemoteOrders((current) => [...current.filter((item) => item.dbId !== order.dbId), order]); void refreshRemote(); return order
     }
     const order = createOrder(user, draft, localSettings, localOrders, new Date())
@@ -256,7 +255,7 @@ export default function App() {
   const handleOrderStatusChange = async (order: Order, status: OrderStatus) => {
     if (!user || user.role !== 'admin') throw new Error('관리자만 상태를 변경할 수 있습니다.')
     if (isSupabaseConfigured) { const updated = await setRemoteOrderStatus(order, status); setRemoteOrders((current) => current.map((item) => item.dbId === updated.dbId ? updated : item)); return }
-    const updated = transitionOrder(order, status); setLocalOrders((current) => current.map((item) => item.id === order.id ? updated : item)); setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), userId: order.createdBy, role: 'all', title: status === '입금완료' ? '입금 확인 완료' : '작업 상태 변경', message: `${order.storeName} 작업 상태가 ${status}(으)로 변경되었습니다.`, read: false, orderId: order.id }, ...current])
+    const updated = transitionOrder(order, status); setLocalOrders((current) => current.map((item) => item.id === order.id ? updated : item)); setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), userId: order.createdBy, role: 'all', title: status === '입금완료' ? '입금 확인 완료' : '작업 상태 변경', message: status === '입금완료' ? `관리자가 ${order.storeName} 작업 입금을 확인했습니다.` : `${order.storeName} 작업 상태가 ${status}(으)로 변경되었습니다.`, read: false, orderId: order.id }, ...current])
   }
 
   const handleMemberReview = async (params: MemberReviewInput) => {
@@ -277,13 +276,18 @@ export default function App() {
   }
 
   const handleConfirmPayment = async (step: PaymentStep) => {
-    if (!user || step.payeeId !== user.id) throw new Error('입금 수취인만 확인할 수 있습니다.')
+    if (!user || step.payeeId !== user.id) throw new Error('입금 확인 권한이 없습니다.')
     if (isSupabaseConfigured) { const updated = await confirmRemotePaymentStep(step.id); setRemotePaymentSteps((current) => current.map((item) => item.id === updated.id ? updated : item)); void refreshRemote(); return }
     const confirmedAt = new Date().toISOString()
     const updatedSteps = localPaymentSteps.map((item) => item.id === step.id ? { ...item, confirmedAt } : item)
     setLocalPaymentSteps(updatedSteps)
+    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: confirmedAt, userId: step.payerId, role: 'all', title: '입금 확인 완료', message: `${step.storeName} 작업 입금이 확인되었습니다.`, read: false, orderId: step.orderNumber }, ...current])
     const orderSteps = updatedSteps.filter((item) => item.orderDbId === step.orderDbId)
-    if (orderSteps.length > 0 && orderSteps.every((item) => item.confirmedAt)) setLocalOrders((current) => current.map((order) => (order.dbId ?? order.id) === step.orderDbId && order.status === '입금대기' ? transitionOrder(order, '입금완료') : order))
+    if (orderSteps.length > 0 && orderSteps.every((item) => item.confirmedAt)) {
+      setLocalOrders((current) => current.map((order) => (order.dbId ?? order.id) === step.orderDbId && order.status === '입금대기' ? transitionOrder(order, '입금완료') : order))
+      const target = localOrders.find((order) => (order.dbId ?? order.id) === step.orderDbId)
+      if (target) setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: confirmedAt, userId: target.createdBy, role: 'all', title: '전체 입금 확인 완료', message: `${target.storeName} 작업의 입금 확인이 완료되었습니다.`, read: false, orderId: target.id }, ...current])
+    }
   }
 
   const handleSettingsChange = async (next: AppSettings) => { if (isSupabaseConfigured) setRemoteSettings(await saveRemoteSettings(next)); else setLocalSettings(next) }
@@ -310,10 +314,10 @@ export default function App() {
 
   return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={setPage} onLogout={() => { setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
-    {page === 'dashboard' && <DashboardPage user={user} orders={orders} notices={notices} now={now} onNavigate={setPage} />}
+    {page === 'dashboard' && <DashboardPage user={user} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {page === 'orders' && <OrdersPage user={user} orders={orders} settings={settings} now={now} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} />}
-    {page === 'settlement' && <SettlementPage user={user} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} />}
+    {page === 'settlement' && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
     {page === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}

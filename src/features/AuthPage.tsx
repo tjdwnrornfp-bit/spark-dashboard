@@ -75,10 +75,10 @@ export function AuthPage({ onLogin, onRegister, serverMode }: {
             <label><span>아이디</span><input autoComplete="username" value={signup.username} onChange={(event) => setSignup((current) => ({ ...current, username: event.target.value }))} placeholder="종류와 관계없이 4자 이상" /></label>
             <label><span>비밀번호</span><input type="password" autoComplete="new-password" value={signup.password} onChange={(event) => setSignup((current) => ({ ...current, password: event.target.value }))} placeholder="종류와 관계없이 4자 이상" /></label>
             <label><span>비밀번호 확인</span><input type="password" autoComplete="new-password" value={signup.passwordConfirm} onChange={(event) => setSignup((current) => ({ ...current, passwordConfirm: event.target.value }))} placeholder="비밀번호 다시 입력" /></label>
-            <label><span>추천인 아이디 또는 코드 <small>(선택)</small></span><input value={signup.referralCode} onChange={(event) => setSignup((current) => ({ ...current, referralCode: event.target.value }))} placeholder="추천인이 있을 때만 입력" /></label>
+            <label><span>추천 코드 <small>(선택)</small></span><input value={signup.referralCode} onChange={(event) => setSignup((current) => ({ ...current, referralCode: event.target.value }))} placeholder="추천 코드가 있을 때만 입력" /></label>
             {message && <p className={`auth-message ${message.type}`}>{message.text}</p>}
             <button className="primary-button auth-submit" disabled={loading} onClick={() => void submitSignup()}>{loading ? '처리 중...' : '가입 신청'}</button>
-            <p className="auth-help">추천인 없이 가입하면 관리자 승인 대상입니다.<br />추천인을 입력하면 대행사로 등록되고 추천인이 단가를 지정해 승인합니다.{serverMode && <><br />서버 동기화 모드로 접수됩니다.</>}</p>
+            <p className="auth-help">가입 승인 후 로그인할 수 있습니다.</p>
           </div>
         )}
       </section>
