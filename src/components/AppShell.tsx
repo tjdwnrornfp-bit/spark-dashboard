@@ -3,12 +3,12 @@ import type { Page, User } from '../domain/types'
 import { Icon, type IconName } from './Icon'
 import { Logo } from './Logo'
 
-const NAV_ITEMS: Array<{ page: Page; label: string; icon: IconName; adminOnly?: boolean }> = [
+const NAV_ITEMS: Array<{ page: Page; label: string; icon: IconName }> = [
   { page: 'dashboard', label: '대시보드', icon: 'dashboard' },
   { page: 'notifications', label: '알림센터', icon: 'bell' },
   { page: 'orders', label: '작업접수', icon: 'orders' },
   { page: 'settlement', label: '정산', icon: 'wallet' },
-  { page: 'members', label: '회원관리', icon: 'users', adminOnly: true },
+  { page: 'members', label: '회원관리', icon: 'users' },
   { page: 'myinfo', label: '내 정보', icon: 'user' },
   { page: 'notices', label: '공지사항', icon: 'notice' },
 ]
@@ -37,7 +37,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
       <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-logo"><Logo /></div>
         <nav>
-          {NAV_ITEMS.filter((item) => !item.adminOnly || user.role === 'admin').map((item) => {
+          {NAV_ITEMS.map((item) => {
             const badge = item.page === 'notifications' ? unreadCount : 0
             return (
               <button key={item.page} className={page === item.page ? 'nav-active' : ''} onClick={() => navigate(item.page)}>

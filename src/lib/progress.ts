@@ -29,45 +29,42 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 /**
- * 화면용 일일 진행률 시뮬레이션입니다.
- * 주문번호와 날짜를 시드로 사용하므로 새로고침해도 같은 시점에는 같은 값이 나오고,
- * 일일 수량이 클수록 완료 시각이 늦어져 100타와 300타의 진행 속도 차이가 드러납니다.
+ * 화면용 일일 진행률입니다. 자정부터 주문별 완료 시각(23:00~23:50)까지
+ * 완만하게 증가하며, 주문번호·날짜·타수를 시드로 사용해 새로고침해도 동일합니다.
+ * 실제 처리 서버 데이터가 연결되면 이 함수만 실측값 조회로 교체하면 됩니다.
  */
 export function getDailyProgress(order: Order, now = new Date()): DailyProgress {
   const current = seoulDateTimeParts(now)
-  const startSecond = 9 * 60 * 60
-  const currentSecond = current.hour * 60 * 60 + current.minute * 60 + current.second
-  const seed = hashString(`${order.id}:${current.date}`)
+  const currentSecond = current.hour * 3600 + current.minute * 60 + current.second
+  const seed = hashString(`${order.id}:${current.date}:${order.dailyShots}`)
 
-  // 100타는 약 20시 전후, 300타는 약 21:30~22시대, 1,000타 이상은 23시대 완료.
-  const workload = clamp(Math.log2(Math.max(1, order.dailyShots / 100)) / Math.log2(10), 0, 1)
-  const completionJitter = Math.round((random01(seed) - 0.5) * 50 * 60)
+  // 타수 차이는 최대 약 8분만 반영하고, 주문별 난수로 완료 시각을 크게 분산합니다.
+  const workloadMinutes = clamp(Math.log10(Math.max(10, order.dailyShots)) - 2, 0, 2) * 4
+  const finishJitterMinutes = Math.round(random01(seed) * 42)
   const completionSecond = Math.round(clamp(
-    20 * 60 * 60 + workload * 210 * 60 + completionJitter,
-    19 * 60 * 60 + 35 * 60,
-    23 * 60 * 60 + 45 * 60,
+    23 * 3600 + workloadMinutes * 60 + finishJitterMinutes * 60,
+    23 * 3600,
+    23 * 3600 + 50 * 60,
   ))
 
-  if (current.date < order.startDate || currentSecond < startSecond) {
+  if (current.date < order.startDate || order.status !== '구동중') {
     return { percent: 0, completedShots: 0, targetShots: order.dailyShots, state: 'waiting' }
   }
   if (current.date > order.endDate || currentSecond >= completionSecond) {
     return { percent: 100, completedShots: order.dailyShots, targetShots: order.dailyShots, state: 'complete' }
   }
 
-  // 3분 구간별 가중치를 만들고 현재 초까지 부분 반영해 게이지가 실제로 움직이게 합니다.
-  const intervalSeconds = 3 * 60
-  const totalIntervals = Math.ceil((completionSecond - startSecond) / intervalSeconds)
-  const elapsed = currentSecond - startSecond
-  const completedIntervals = Math.floor(elapsed / intervalSeconds)
-  const partialInterval = (elapsed % intervalSeconds) / intervalSeconds
+  const intervalSeconds = 10 * 60
+  const totalIntervals = Math.ceil(completionSecond / intervalSeconds)
+  const completedIntervals = Math.floor(currentSecond / intervalSeconds)
+  const partialInterval = (currentSecond % intervalSeconds) / intervalSeconds
   const weights: number[] = []
 
   for (let index = 0; index < totalIntervals; index += 1) {
     const position = totalIntervals <= 1 ? 1 : index / (totalIntervals - 1)
-    const lateBias = 0.55 + Math.pow(position + 0.08, 1 + workload * 2.2) * (1.1 + workload * 1.8)
-    const randomFactor = 0.66 + random01(seed + index * 97) * 0.68
-    weights.push(Math.max(0.08, lateBias * randomFactor))
+    const dailyShape = 0.82 + position * 0.28
+    const randomFactor = 0.72 + random01(seed + index * 131) * 0.56
+    weights.push(dailyShape * randomFactor)
   }
 
   const totalWeight = weights.reduce((sum, weight) => sum + weight, 0)
@@ -78,8 +75,7 @@ export function getDailyProgress(order: Order, now = new Date()): DailyProgress 
   }, 0)
 
   const rawPercent = totalWeight === 0 ? 0 : elapsedWeight / totalWeight * 100
-  const percent = Math.min(99.99, Math.max(0.01, Math.floor(rawPercent * 100) / 100))
+  const percent = Math.min(99.99, Math.max(0, Math.floor(rawPercent * 100) / 100))
   const completedShots = Math.min(order.dailyShots - 1, Math.floor(order.dailyShots * percent / 100))
-
   return { percent, completedShots, targetShots: order.dailyShots, state: 'running' }
 }

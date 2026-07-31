@@ -15,12 +15,21 @@ export interface User {
   requestedAt: string
   approvedAt: string | null
   updatedAt: string
+  sponsorId: string | null
+  sponsorUsername: string | null
+  referralCode: string
+  groupName: string
+  hierarchyDepth: number
+  bank: string
+  accountNumber: string
+  accountHolder: string
 }
 
 export interface SignupDraft {
   username: string
   password: string
   passwordConfirm: string
+  referralCode: string
 }
 
 export interface Order {
@@ -29,6 +38,9 @@ export interface Order {
   createdAt: string
   createdBy: string
   creatorUsername: string
+  sponsorId: string | null
+  sponsorUsername: string | null
+  creatorGroupName: string
   placeUrl: string
   mid: string
   storeName: string
@@ -58,6 +70,33 @@ export interface OrderDraft {
   memo: string
 }
 
+export interface PaymentStep {
+  id: string
+  orderDbId: string
+  orderNumber: string
+  storeName: string
+  stepOrder: number
+  payerId: string
+  payerUsername: string
+  payeeId: string
+  payeeUsername: string
+  unitPrice: number
+  supplyAmount: number
+  vatAmount: number
+  totalAmount: number
+  confirmedAt: string | null
+  createdAt: string
+}
+
+export interface PaymentAccount {
+  payeeId: string | null
+  payeeUsername: string
+  bank: string
+  accountNumber: string
+  accountHolder: string
+  source: 'admin' | 'sponsor'
+}
+
 export interface NotificationItem {
   id: string
   createdAt: string
@@ -80,6 +119,20 @@ export interface Notice {
 export interface AppSettings {
   cutoffHour: number
   autoStartHour: number
+  bank: string
+  accountNumber: string
+  accountHolder: string
+}
+
+export interface MemberReviewInput {
+  member: User
+  role: MemberRole
+  pricePerShot: number
+  approvalStatus: 'approved' | 'rejected'
+  groupName: string
+}
+
+export interface AccountDraft {
   bank: string
   accountNumber: string
   accountHolder: string

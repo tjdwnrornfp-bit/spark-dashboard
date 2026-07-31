@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type IconName = 'dashboard' | 'bell' | 'orders' | 'wallet' | 'users' | 'user' | 'notice' | 'logout' | 'plus' | 'check' | 'close' | 'menu' | 'download' | 'copy' | 'chevron' | 'search' | 'lock' | 'trash'
+export type IconName = 'dashboard' | 'bell' | 'orders' | 'wallet' | 'users' | 'user' | 'notice' | 'logout' | 'plus' | 'check' | 'close' | 'menu' | 'download' | 'copy' | 'chevron' | 'search' | 'lock' | 'trash' | 'upload'
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }): ReactNode {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
@@ -18,6 +18,7 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }): Re
     close: <path d="M6 6l12 12M18 6 6 18"/>,
     menu: <path d="M4 7h16M4 12h16M4 17h16"/>,
     download: <><path d="M12 3v12M7 10l5 5 5-5"/><path d="M5 21h14"/></>,
+    upload: <><path d="M12 21V9M7 14l5-5 5 5"/><path d="M5 3h14"/></>,
     copy: <><rect x="9" y="9" width="11" height="11" rx="2"/><rect x="4" y="4" width="11" height="11" rx="2"/></>,
     chevron: <path d="m9 18 6-6-6-6"/>,
     search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></>,

@@ -1,5 +1,5 @@
 import type { AppSettings, Order, OrderDraft, OrderStatus, User } from '../domain/types'
-import { calculateOperationDates, hasReachedSeoulTime, seoulTimeIso, todayInSeoul } from './date'
+import { calculateOperationDates, todayInSeoul } from './date'
 import { calculateAmount } from './money'
 
 export function extractMid(url: string): string {
@@ -46,6 +46,9 @@ export function createOrder(user: User, draft: OrderDraft, settings: AppSettings
     createdAt: iso,
     createdBy: user.id,
     creatorUsername: user.username,
+    sponsorId: user.sponsorId,
+    sponsorUsername: user.sponsorUsername,
+    creatorGroupName: user.groupName,
     placeUrl: draft.placeUrl.trim(),
     mid: extractMid(draft.placeUrl),
     storeName: draft.storeName.trim(),
@@ -91,10 +94,10 @@ export function applyScheduledTransitions(orders: Order[], members: User[], sett
   const nextOrders = orders.map((order) => {
     const member = members.find((item) => item.id === order.createdBy)
     const role = member?.role === 'distributor' ? 'distributor' : 'agency'
-    if (order.status === '입금완료' && hasReachedSeoulTime(order.startDate, settings.autoStartHour, now) && order.endDate >= today) {
+    if (order.status === '입금완료' && order.startDate <= today && order.endDate >= today) {
       changed = true
       transitions.push({ orderId: order.id, userId: order.createdBy, role, nextStatus: '구동중' })
-      return { ...order, status: '구동중' as const, activatedAt: seoulTimeIso(order.startDate, settings.autoStartHour), updatedAt: now.toISOString() }
+      return { ...order, status: '구동중' as const, activatedAt: now.toISOString(), updatedAt: now.toISOString() }
     }
     if (['입금완료', '구동중', '정지'].includes(order.status) && order.endDate < today) {
       changed = true
