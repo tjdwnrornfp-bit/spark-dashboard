@@ -1169,3 +1169,101 @@ td small { margin-top: 4px; font-size: 10px; }
   .myinfo-detail-header { grid-template-columns: auto minmax(0, 1fr); }
   .myinfo-detail-header > button { grid-column: 1 / -1; width: 100%; }
 }
+
+/* v8.2: crisp vector brand and program marks */
+.logo {
+  gap: 11px;
+}
+.logo strong {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: .045em;
+}
+.logo-mark {
+  width: 40px;
+  height: 40px;
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+  border-radius: 0;
+  background: none;
+  color: inherit;
+  box-shadow: none;
+}
+.sidebar-logo {
+  height: 80px;
+  padding: 0 18px;
+}
+
+.program-icon {
+  display: block;
+  flex: 0 0 auto;
+  overflow: visible;
+  border-radius: 0;
+  background: none;
+  object-fit: unset;
+  filter: none !important;
+  user-select: none;
+}
+.nav-program-icon {
+  width: 36px !important;
+  height: 36px !important;
+  border-radius: 0;
+  filter: none !important;
+}
+.sidebar nav button:has(.nav-program-icon) {
+  min-height: 50px;
+  height: 50px;
+}
+.program-heading .program-icon {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 0;
+}
+.myinfo-price-card .program-icon {
+  width: 48px !important;
+  height: 48px !important;
+  border-radius: 0;
+  filter: none !important;
+}
+
+.program-summary-card {
+  min-height: 132px;
+  gap: 13px;
+  padding: 19px 20px;
+}
+.program-summary-head {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  gap: 0;
+  padding-bottom: 11px;
+  border-bottom: 1px solid #e8edf6;
+}
+.program-summary-head strong {
+  color: #172033;
+  font-size: 17px;
+  letter-spacing: -.015em;
+}
+.program-summary-body {
+  margin-top: 0;
+}
+
+.myinfo-logo-wrap .logo-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+
+@media (max-width: 760px) {
+  .logo-mark {
+    width: 36px;
+    height: 36px;
+  }
+  .nav-program-icon {
+    width: 34px !important;
+    height: 34px !important;
+  }
+}

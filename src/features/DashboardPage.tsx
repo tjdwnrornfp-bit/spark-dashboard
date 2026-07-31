@@ -1,6 +1,5 @@
 import type { ReactNode } from 'react'
 import { Icon } from '../components/Icon'
-import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
 import type { Notice, Order, Page, PaymentStep, User } from '../domain/types'
@@ -69,7 +68,7 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
         <section className="panel compact-panel dashboard-progress-panel">
           <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>세 프로그램의 진행 상태를 한눈에 확인합니다.</p></div></div>
           <div className="program-dashboard-grid">
-            {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><ProgramIcon programType={summary.type} size={24} /><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span></div></button>)}
+            {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span></div></button>)}
           </div>
         </section>
         <section className="panel compact-panel dashboard-progress-panel">
@@ -114,7 +113,7 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
       <section className="panel compact-panel dashboard-progress-panel">
         <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>스파크, 스파크 +, 스파크S를 분리해 관리합니다.</p></div></div>
         <div className="program-dashboard-grid">
-          {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><ProgramIcon programType={summary.type} size={24} /><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
+          {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
         </div>
       </section>
       <section className="dashboard-lower-grid">
