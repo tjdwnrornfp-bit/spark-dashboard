@@ -132,12 +132,13 @@ export default function App() {
     let active = true
     const restoreSession = async () => {
       try {
-        const { data, error } = await supabase?.auth.getSession()
+        if (!supabase) return;
+        const { data, error } = await supabase.auth.getSession()
         if (error) throw error
         const authUserId = data.session?.user?.id
         if (!authUserId) { if (active) setRemoteUser(null); return }
         const profile = await fetchProfile(authUserId)
-        if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) { await supabase.auth.signOut(); if (active) setRemoteUser(null); return }
+        if (!profile || profile.approvalStatus !== 'approved' || !profile.active || profile.role === null) { await supabase?.auth.signOut(); if (active) setRemoteUser(null); return }
         if (active) setRemoteUser(profile)
       } catch (error) { if (active) setRemoteError(errorMessage(error, '로그인 세션을 확인하지 못했습니다.')) } finally { if (active) setAuthReady(true) }
     }
@@ -161,7 +162,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, scheduleRefresh).subscribe()
-    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void supabase.removeChannel(channel) }
+    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void supabase?.removeChannel(channel) }
   }, [refreshRemote, remoteUser])
 
   useEffect(() => {
