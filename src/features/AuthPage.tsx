@@ -48,10 +48,15 @@ export function AuthPage({ onLogin, onRegister, serverMode }: {
       return
     }
     setLoading(true)
-    const result = await onRegister(signup)
-    setLoading(false)
-    setMessage({ type: result.ok ? 'success' : 'error', text: result.message })
-    if (result.ok) setSignup(EMPTY_SIGNUP)
+    try {
+      const result = await onRegister(signup)
+      setMessage({ type: result.ok ? 'success' : 'error', text: result.message })
+      if (result.ok) setSignup(EMPTY_SIGNUP)
+    } catch {
+      setMessage({ type: 'error', text: '회원가입 요청을 처리하지 못했습니다. 잠시 후 다시 시도해 주세요.' })
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

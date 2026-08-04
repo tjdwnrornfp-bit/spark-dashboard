@@ -36,14 +36,26 @@ import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, PROGRAM_PA
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 function errorMessage(error: unknown, fallback: string): string {
-  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
-    const message = error.message
-    if (/invalid login credentials/i.test(message)) return '아이디 또는 비밀번호가 올바르지 않습니다.'
-    if (/user already registered|duplicate key|profiles_username_key_key/i.test(message)) return '이미 사용 중이거나 가입 신청된 아이디입니다.'
-    if (/password/i.test(message) && /short|weak|length/i.test(message)) return '서버 비밀번호 정책에 맞지 않습니다. Supabase 비밀번호 최소 길이 설정을 확인해 주세요.'
-    return message
+  const values: string[] = []
+  if (typeof error === 'string') values.push(error)
+  if (error && typeof error === 'object') {
+    const record = error as Record<string, unknown>
+    for (const key of ['message', 'error_description', 'details', 'hint', 'code']) {
+      const value = record[key]
+      if (typeof value === 'string' && value.trim()) values.push(value.trim())
+      if (typeof value === 'number') values.push(String(value))
+    }
   }
-  return fallback
+
+  const message = values.join(' · ').trim()
+  if (/invalid login credentials/i.test(message)) return '아이디 또는 비밀번호가 올바르지 않습니다.'
+  if (/user already registered|duplicate key|profiles_username_key_key|이미 사용 중/i.test(message)) return '이미 사용 중이거나 가입 신청된 아이디입니다.'
+  if (/password/i.test(message) && /short|weak|length/i.test(message)) return '서버 비밀번호 정책에 맞지 않습니다. Supabase 비밀번호 최소 길이 설정을 확인해 주세요.'
+  if (/database error saving new user|unexpected_failure|handle_new_auth_user/i.test(message)) {
+    return '회원가입 데이터베이스 연결에 문제가 있습니다. Supabase에서 repair_signup_v8.sql을 실행해 주세요.'
+  }
+  if (!message || message === '{}' || message === '[object Object]') return fallback
+  return message
 }
 
 function makeReferralCode(id: string): string {
