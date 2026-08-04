@@ -1267,3 +1267,43 @@ td small { margin-top: 4px; font-size: 10px; }
     height: 34px !important;
   }
 }
+
+/* v8.6: compact program overview and Spark S count-only display */
+.program-summary-panel {
+  min-height: 0 !important;
+  padding-bottom: 20px;
+}
+
+.program-summary-panel .program-dashboard-grid {
+  margin-bottom: 0;
+}
+
+.program-summary-panel .program-summary-card {
+  min-height: 116px;
+  padding-top: 16px;
+  padding-bottom: 16px;
+}
+
+.spark-s-running-status {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #dbe7fb;
+  border-radius: 999px;
+  background: #f4f8ff;
+  color: #315f9f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+@media (max-width: 760px) {
+  .program-summary-panel {
+    padding-bottom: 16px;
+  }
+
+  .program-summary-panel .program-summary-card {
+    min-height: 108px;
+  }
+}

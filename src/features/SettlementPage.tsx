@@ -5,12 +5,18 @@ import { StatusBadge } from '../components/StatusBadge'
 import type { AppSettings, Order, PaymentAccount, PaymentStep, User } from '../domain/types'
 import { formatDate, formatDateTime } from '../lib/date'
 import { formatWon } from '../lib/money'
+import { unitLabelForProgram } from '../lib/program'
 import { PageHeader } from './DashboardPage'
 
 function getErrorMessage(error: unknown): string {
   return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
     ? error.message
     : '요청을 처리하지 못했습니다.'
+}
+
+function paymentStepUnit(step: PaymentStep, orders: Order[]): '타' | '건' {
+  const order = orders.find((item) => (item.dbId ?? item.id) === step.orderDbId || item.id === step.orderNumber)
+  return unitLabelForProgram(order?.programType ?? 'spark')
 }
 
 function adminRegistrantLabel(step: PaymentStep, orders: Order[]): string {
@@ -100,12 +106,12 @@ export function SettlementPage({ user, members: _members, orders, paymentSteps, 
       <section className={`settlement-chain-grid ${user.role === 'admin' ? 'admin-settlement-grid' : ''}`}>
         <section className="panel compact-panel fill-panel settlement-incoming-panel">
           <div className="panel-header"><div><h2>{user.role === 'admin' ? '관리자 입금 확인' : '하위 대행사 입금 확인'}</h2><p>실제 입금을 확인한 뒤 입금확인 버튼을 누릅니다.</p></div></div>
-          {incomingSteps.length === 0 ? <div className="empty-state">확인할 입금 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-incoming-table"><thead><tr><th>작업</th><th>{user.role === 'admin' ? '등록 그룹' : '입금자'}</th><th>1타 단가</th><th>입금액</th><th>상태</th><th>확인</th></tr></thead><tbody>{incomingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{user.role === 'admin' ? adminRegistrantLabel(step, orders) : step.payerUsername}</td><td>{formatWon(step.unitPrice)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : <span className="payment-waiting-text">입금대기</span>}</td><td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : '입금확인'}</button>}</td></tr>)}</tbody></table></div>}
+          {incomingSteps.length === 0 ? <div className="empty-state">확인할 입금 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-incoming-table"><thead><tr><th>작업</th><th>{user.role === 'admin' ? '등록 그룹' : '입금자'}</th><th>단가</th><th>입금액</th><th>상태</th><th>확인</th></tr></thead><tbody>{incomingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{user.role === 'admin' ? adminRegistrantLabel(step, orders) : step.payerUsername}</td><td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : <span className="payment-waiting-text">입금대기</span>}</td><td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : '입금확인'}</button>}</td></tr>)}</tbody></table></div>}
         </section>
 
         {user.role !== 'admin' && <section className="panel compact-panel fill-panel settlement-outgoing-panel">
           <div className="panel-header"><div><h2>작업 정산 내역</h2><p>내 작업과 하위 작업을 합산한 정산 내역입니다.</p></div></div>
-          {outgoingSteps.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-outgoing-table"><thead><tr><th>작업</th><th>1타 단가</th><th>정산액</th><th>상태</th></tr></thead><tbody>{outgoingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{formatWon(step.unitPrice)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">입금확인 완료</span> : <span className="payment-waiting-text">확인 대기</span>}</td></tr>)}</tbody></table></div>}
+          {outgoingSteps.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-outgoing-table"><thead><tr><th>작업</th><th>단가</th><th>정산액</th><th>상태</th></tr></thead><tbody>{outgoingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">입금확인 완료</span> : <span className="payment-waiting-text">확인 대기</span>}</td></tr>)}</tbody></table></div>}
         </section>}
       </section>
 

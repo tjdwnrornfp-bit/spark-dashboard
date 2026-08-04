@@ -80,7 +80,7 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
           <div>
             <span className="myinfo-eyebrow">MY ACCOUNT</span>
             <div className="myinfo-name-line"><h2>{user.username}</h2><span className="myinfo-role-badge">{roleLabel}</span><span className="myinfo-active-badge">사용중</span></div>
-            <p>{user.groupName ? `${user.groupName} 그룹` : 'SPARK 작업 관리 계정'}</p>
+            <p>{user.role === 'admin' ? 'SPARK 관리자 계정' : 'SPARK 작업 관리 계정'}</p>
           </div>
         </div>
         {user.role !== 'admin' && (
@@ -106,7 +106,7 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
             </article>
             <article className="myinfo-price-card">
               <ProgramIcon programType="spark_s" size={48} />
-              <div><span>스파크S</span><strong>{formatWon(prices.spark_s)}</strong><small>1타 기준</small></div>
+              <div><span>스파크S</span><strong>{formatWon(prices.spark_s)}</strong><small>1건 기준</small></div>
             </article>
           </div>
         </section>

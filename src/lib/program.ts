@@ -34,6 +34,14 @@ export function orderPrefixForProgram(programType: ProgramType): string {
   return programMeta(programType).orderPrefix
 }
 
+export function unitLabelForProgram(programType: ProgramType): '타' | '건' {
+  return programType === 'spark_s' ? '건' : '타'
+}
+
+export function unitPriceLabelForProgram(programType: ProgramType): string {
+  return programType === 'spark_s' ? '1건당 단가' : '1타당 단가'
+}
+
 export function getProgramPriceMap(user: User): ProgramPriceMap {
   return {
     spark: user.sparkPricePerShot || user.pricePerShot || 0,

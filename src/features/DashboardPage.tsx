@@ -23,8 +23,10 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
   const visible = user.role === 'admin' ? orders : orders.filter((order) => order.createdBy === user.id)
   const running = visible.filter((order) => order.status === '구동중')
   const paidWaitingStart = visible.filter((order) => order.status === '입금완료')
-  const totalRunningShots = running.reduce((sum, order) => sum + order.dailyShots, 0)
-  const totalContractShots = visible.reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
+  const runningShots = running.filter((order) => order.programType !== 'spark_s').reduce((sum, order) => sum + order.dailyShots, 0)
+  const runningCases = running.filter((order) => order.programType === 'spark_s').reduce((sum, order) => sum + order.dailyShots, 0)
+  const totalContractShots = visible.filter((order) => order.programType !== 'spark_s').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
+  const totalContractCases = visible.filter((order) => order.programType === 'spark_s').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
 
   const settlementSteps = user.role === 'admin'
     ? paymentSteps.filter((step) => step.payeeId === user.id)
@@ -56,8 +58,8 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
         <PageHeader title="대시보드" subtitle={`${user.username}님, 안녕하세요. 오늘 현황을 확인하세요.`} />
         {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
         <section className="daily-summary-card">
-          <div><span>오늘 구동 타수</span><strong>{totalRunningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {running.length}건 · 시작대기 {paidWaitingStart.length}건</p></div>
-          <div className="daily-summary-right"><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}</strong><small>내가 직접 접수한 전체 구동 수량</small></div>
+          <div><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {running.length}건 · 스파크S {runningCases.toLocaleString('ko-KR')}건</p></div>
+          <div className="daily-summary-right"><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}</strong><small>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건</small></div>
         </section>
         <section className="mini-stat-grid payment-stat-grid agency-payment-grid">
           <MiniStat label="입금 대기 금액" value={formatWon(waitingAmount)} />
@@ -65,7 +67,7 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
           <MiniStat label="총 접수 금액" value={formatWon(totalAmount)} />
           <MiniStat label="입금 받은 금액" value={formatWon(receivedAmount)} />
         </section>
-        <section className="panel compact-panel dashboard-progress-panel">
+        <section className="panel compact-panel dashboard-progress-panel program-summary-panel">
           <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>세 프로그램의 진행 상태를 한눈에 확인합니다.</p></div></div>
           <div className="program-dashboard-grid">
             {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span></div></button>)}
@@ -78,7 +80,7 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
               {running.map((order) => (
                 <article key={order.id} className="dashboard-running-item compact-running-card">
                   <div className="compact-running-title"><strong>[{PROGRAMS.find((program) => program.type === order.programType)?.label}] {order.storeName}</strong><span>{order.keyword}</span></div>
-                  <ProgressGauge order={order} now={now} compact />
+                  {order.programType === 'spark_s' ? <span className="spark-s-running-status">구동중 · {order.dailyShots.toLocaleString('ko-KR')}건</span> : <ProgressGauge order={order} now={now} compact />}
                 </article>
               ))}
             </div>
@@ -102,15 +104,15 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
     <div className="page-stack dashboard-page-stack">
       <PageHeader title="대시보드" subtitle="전체 작업 수량과 관리자 정산 현황을 확인합니다." />
       <section className="admin-kpi-card">
-        <div><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}<small>타</small></strong><p>전체 접수의 일일수량 × 구동일수 합계</p></div>
-        <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{totalRunningShots.toLocaleString('ko-KR')}</strong><small>구동중 {running.length}건</small></div>
+        <div><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}<small>타</small></strong><p>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건</p></div>
+        <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}</strong><small>스파크S {runningCases.toLocaleString('ko-KR')}건 · 구동중 {running.length}건</small></div>
       </section>
       <section className="mini-stat-grid payment-stat-grid">
         <MiniStat label="입금 대기 금액" value={formatWon(waitingAmount)} />
         <MiniStat label="입금 완료 금액" value={formatWon(confirmedAmount)} />
         <MiniStat label="총 정산 금액" value={formatWon(totalAmount)} />
       </section>
-      <section className="panel compact-panel dashboard-progress-panel">
+      <section className="panel compact-panel dashboard-progress-panel program-summary-panel">
         <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>스파크, 스파크 +, 스파크S를 분리해 관리합니다.</p></div></div>
         <div className="program-dashboard-grid">
           {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
