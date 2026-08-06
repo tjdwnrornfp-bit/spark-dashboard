@@ -181,3 +181,116 @@ export interface OperationsHealth {
   inactiveCronJobs: number
   checkedAt: string
 }
+
+export type SettlementListStatus = 'waiting' | 'confirmed' | 'all'
+export type SettlementSelectionMode = 'explicit' | 'filtered'
+
+export interface SettlementFilters {
+  payerId: string
+  registrantId: string
+  groupName: string
+  query: string
+  programType: ProgramType | 'all'
+  status: SettlementListStatus
+  startDateFrom: string
+  startDateTo: string
+}
+
+export interface SettlementRow extends PaymentStep {
+  mid: string
+  registrantId: string
+  registrantUsername: string
+  registrantGroupName: string
+  startDate: string
+}
+
+export interface SettlementPageResult {
+  rows: SettlementRow[]
+  page: number
+  pageSize: number
+  totalPages: number
+  totalCount: number
+  totalAmount: number
+  readyCount: number
+  readyAmount: number
+}
+
+export interface SettlementSummary {
+  waitingCount: number
+  waitingAmount: number
+  confirmedCount: number
+  confirmedAmount: number
+  totalCount: number
+  totalAmount: number
+  receivedCount: number
+  receivedAmount: number
+}
+
+export interface SettlementFilterOption {
+  id: string
+  label: string
+}
+
+export interface SettlementFilterOptions {
+  payers: SettlementFilterOption[]
+  registrants: SettlementFilterOption[]
+  groups: string[]
+}
+
+export interface SettlementQuoteGroup {
+  payerId: string
+  payerUsername: string
+  itemCount: number
+  expectedAmount: number
+}
+
+export interface SettlementQuote {
+  id: string
+  itemCount: number
+  expectedAmount: number
+  expiresAt: string
+  groups: SettlementQuoteGroup[]
+}
+
+export interface SettlementConfirmationInput {
+  payerId: string
+  actualAmount: number
+  depositorName: string
+}
+
+export interface SettlementBatchResultItem {
+  id: string
+  batchNumber: string
+  payerId: string
+  payerUsername: string
+  itemCount: number
+  expectedAmount: number
+  actualAmount: number
+  confirmedAt: string
+}
+
+export interface SettlementBatchResult {
+  itemCount: number
+  totalAmount: number
+  batches: SettlementBatchResultItem[]
+}
+
+export interface SettlementBatchHistoryItem extends SettlementBatchResultItem {
+  payeeId: string
+  payeeUsername: string
+  depositorName: string
+  memo: string
+  status: 'confirmed' | 'voided'
+}
+
+export interface SettlementBatchItemDetail {
+  paymentStepId: string
+  orderId: string
+  orderNumber: string
+  storeName: string
+  registrantId: string
+  registrantUsername: string
+  registrantGroupName: string
+  programType: ProgramType
+  amount: number
+}

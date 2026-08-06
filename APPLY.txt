@@ -1,11 +1,10 @@
-SPARK v8.4 S 아이콘 수정 패치
+SPARK v9.2 정산 운영 패치
 
-교체 파일:
-src/components/ProgramIcon.tsx
-
-적용 후:
-npm run build
-git add src/components/ProgramIcon.tsx
-git commit -m "Fix SPARK S icon shape"
-git pull --rebase origin main
-git push origin main
+1. 먼저 Supabase SQL Editor에서 supabase/preflight_v9_2.sql을 실행해 기존 데이터 건수를 확인합니다.
+2. supabase/update_v9_2_settlement_batches.sql 전체를 실행합니다.
+3. supabase/verify_v9_2_settlement_batches.sql을 실행합니다.
+4. 패치의 package.json, src 폴더와 문서 파일을 기존 프로젝트에 덮어씁니다.
+5. .git과 .env.local은 유지합니다.
+6. npm install && npm run build
+7. git add . && git commit -m "Add settlement batch confirmation workflow"
+8. git pull --rebase origin main && git push origin main

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -15,6 +15,7 @@ import { useLocalStorage } from './hooks/useLocalStorage'
 import {
   archiveRemoteOrder,
   confirmRemotePaymentStep,
+  confirmSettlementQuoteV92,
   createRemoteNotice,
   createRemoteOrder,
   createRemoteOrdersBulk,
@@ -180,6 +181,7 @@ export default function App() {
     const channel = client.channel(`spark-dashboard-v8-${remoteUser.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_steps' }, scheduleRefresh)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlement_batches' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, scheduleRefresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, scheduleRefresh)
@@ -421,6 +423,14 @@ export default function App() {
     }
   }
 
+  const handleConfirmSettlementQuote = async (quoteId: string, confirmations: SettlementConfirmationInput[], memo: string): Promise<SettlementBatchResult> => {
+    if (!user) throw new Error('로그인이 필요합니다.')
+    if (!isSupabaseConfigured) throw new Error('로컬 모드에서는 정산 묶음 서버 기록을 사용할 수 없습니다.')
+    const result = await confirmSettlementQuoteV92(quoteId, confirmations, memo)
+    await refreshRemote()
+    return result
+  }
+
   const handleSettingsChange = async (next: AppSettings) => { if (isSupabaseConfigured) setRemoteSettings(await saveRemoteSettings(next)); else setLocalSettings(next) }
   const handleNotificationRead = async (id: string) => { if (isSupabaseConfigured) await markRemoteNotificationRead(id); (isSupabaseConfigured ? setRemoteNotifications : setLocalNotifications)((current) => current.map((item) => item.id === id ? { ...item, read: true } : item)) }
   const handleNotificationsReadAll = async (ids: string[]) => { if (isSupabaseConfigured) await markAllRemoteNotificationsRead(ids); const set = new Set(ids); (isSupabaseConfigured ? setRemoteNotifications : setLocalNotifications)((current) => current.map((item) => set.has(item.id) ? { ...item, read: true } : item)) }
@@ -459,7 +469,7 @@ export default function App() {
     {page === 'dashboard' && <DashboardPage user={user} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {activeProgram && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
-    {page === 'settlement' && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} />}
+    {page === 'settlement' && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}

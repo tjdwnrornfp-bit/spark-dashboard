@@ -11,6 +11,16 @@ import type {
   PaymentAccount,
   OperationsHealth,
   PaymentStep,
+  SettlementBatchHistoryItem,
+  SettlementBatchItemDetail,
+  SettlementBatchResult,
+  SettlementConfirmationInput,
+  SettlementFilterOptions,
+  SettlementFilters,
+  SettlementPageResult,
+  SettlementQuote,
+  SettlementRow,
+  SettlementSummary,
   User,
 } from '../domain/types'
 import { extractMid } from './order'
@@ -431,4 +441,211 @@ export async function fetchOperationsHealth(): Promise<OperationsHealth> {
   if (error) throw error
   const row = Array.isArray(data) ? data[0] : data
   return mapOperationsHealth((row ?? {}) as Record<string, unknown>)
+}
+
+function recordValue(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}
+}
+
+function mapSettlementRow(row: Record<string, unknown>): SettlementRow {
+  return {
+    id: stringValue(row.id),
+    programType: (row.programType as SettlementRow['programType']) ?? 'spark',
+    orderDbId: stringValue(row.orderDbId),
+    orderNumber: stringValue(row.orderNumber),
+    storeName: stringValue(row.storeName),
+    stepOrder: numberValue(row.stepOrder),
+    payerId: stringValue(row.payerId),
+    payerUsername: stringValue(row.payerUsername),
+    payeeId: stringValue(row.payeeId),
+    payeeUsername: stringValue(row.payeeUsername),
+    unitPrice: numberValue(row.unitPrice),
+    supplyAmount: numberValue(row.supplyAmount),
+    vatAmount: numberValue(row.vatAmount),
+    totalAmount: numberValue(row.totalAmount),
+    confirmedAt: nullableString(row.confirmedAt),
+    canConfirm: Boolean(row.canConfirm),
+    previousPendingCount: numberValue(row.previousPendingCount),
+    createdAt: stringValue(row.createdAt),
+    mid: stringValue(row.mid),
+    registrantId: stringValue(row.registrantId),
+    registrantUsername: stringValue(row.registrantUsername),
+    registrantGroupName: stringValue(row.registrantGroupName),
+    startDate: stringValue(row.startDate),
+  }
+}
+
+function settlementRpcParams(filters: SettlementFilters) {
+  return {
+    p_status: filters.status,
+    p_payer_id: filters.payerId || null,
+    p_registrant_id: filters.registrantId || null,
+    p_group_name: filters.groupName || null,
+    p_query: filters.query.trim() || null,
+    p_program_type: filters.programType === 'all' ? null : filters.programType,
+    p_start_date_from: filters.startDateFrom || null,
+    p_start_date_to: filters.startDateTo || null,
+  }
+}
+
+export async function fetchSettlementPageV92(filters: SettlementFilters, page = 1, pageSize = 50): Promise<SettlementPageResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_my_settlement_page_v92', {
+    ...settlementRpcParams(filters),
+    p_page: page,
+    p_page_size: pageSize,
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  const rows = Array.isArray(result.rows) ? result.rows.map((row) => mapSettlementRow(recordValue(row))) : []
+  return {
+    rows,
+    page: Math.max(1, numberValue(result.page) || page),
+    pageSize: Math.max(1, numberValue(result.pageSize) || pageSize),
+    totalPages: Math.max(1, numberValue(result.totalPages) || 1),
+    totalCount: numberValue(result.totalCount),
+    totalAmount: numberValue(result.totalAmount),
+    readyCount: numberValue(result.readyCount),
+    readyAmount: numberValue(result.readyAmount),
+  }
+}
+
+export async function fetchSettlementSummaryV92(): Promise<SettlementSummary> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_my_settlement_summary_v92')
+  if (error) throw error
+  const result = recordValue(data)
+  return {
+    waitingCount: numberValue(result.waitingCount),
+    waitingAmount: numberValue(result.waitingAmount),
+    confirmedCount: numberValue(result.confirmedCount),
+    confirmedAmount: numberValue(result.confirmedAmount),
+    totalCount: numberValue(result.totalCount),
+    totalAmount: numberValue(result.totalAmount),
+    receivedCount: numberValue(result.receivedCount),
+    receivedAmount: numberValue(result.receivedAmount),
+  }
+}
+
+export async function fetchSettlementFilterOptionsV92(): Promise<SettlementFilterOptions> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_my_settlement_filter_options_v92')
+  if (error) throw error
+  const result = recordValue(data)
+  const mapOptions = (value: unknown) => Array.isArray(value)
+    ? value.map((item) => recordValue(item)).map((item) => ({ id: stringValue(item.id), label: stringValue(item.label) })).filter((item) => item.id)
+    : []
+  return {
+    payers: mapOptions(result.payers),
+    registrants: mapOptions(result.registrants),
+    groups: Array.isArray(result.groups) ? result.groups.map(stringValue).filter(Boolean) : [],
+  }
+}
+
+export async function createSettlementQuoteV92(params: {
+  selectionMode: 'explicit' | 'filtered'
+  selectedStepIds: string[]
+  excludedStepIds: string[]
+  filters: SettlementFilters
+}): Promise<SettlementQuote> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('create_settlement_quote_v92', {
+    p_selection_mode: params.selectionMode,
+    p_step_ids: params.selectedStepIds,
+    p_excluded_step_ids: params.excludedStepIds,
+    ...settlementRpcParams({ ...params.filters, status: 'waiting' }),
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  return {
+    id: stringValue(result.id),
+    itemCount: numberValue(result.itemCount),
+    expectedAmount: numberValue(result.expectedAmount),
+    expiresAt: stringValue(result.expiresAt),
+    groups: Array.isArray(result.groups) ? result.groups.map((item) => {
+      const group = recordValue(item)
+      return {
+        payerId: stringValue(group.payerId),
+        payerUsername: stringValue(group.payerUsername),
+        itemCount: numberValue(group.itemCount),
+        expectedAmount: numberValue(group.expectedAmount),
+      }
+    }) : [],
+  }
+}
+
+export async function confirmSettlementQuoteV92(quoteId: string, confirmations: SettlementConfirmationInput[], memo: string): Promise<SettlementBatchResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('confirm_settlement_quote_v92', {
+    p_quote_id: quoteId,
+    p_payer_confirmations: confirmations.map((item) => ({
+      payer_id: item.payerId,
+      actual_amount: item.actualAmount,
+      depositor_name: item.depositorName.trim(),
+    })),
+    p_memo: memo.trim(),
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  return {
+    itemCount: numberValue(result.itemCount),
+    totalAmount: numberValue(result.totalAmount),
+    batches: Array.isArray(result.batches) ? result.batches.map((item) => {
+      const batch = recordValue(item)
+      return {
+        id: stringValue(batch.id),
+        batchNumber: stringValue(batch.batchNumber),
+        payerId: stringValue(batch.payerId),
+        payerUsername: stringValue(batch.payerUsername),
+        itemCount: numberValue(batch.itemCount),
+        expectedAmount: numberValue(batch.expectedAmount),
+        actualAmount: numberValue(batch.actualAmount),
+        confirmedAt: stringValue(batch.confirmedAt),
+      }
+    }) : [],
+  }
+}
+
+export async function fetchSettlementBatchHistoryV92(limit = 50): Promise<SettlementBatchHistoryItem[]> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_my_settlement_batches_v92', { p_limit: limit })
+  if (error) throw error
+  return Array.isArray(data) ? data.map((item) => {
+    const batch = recordValue(item)
+    return {
+      id: stringValue(batch.id),
+      batchNumber: stringValue(batch.batchNumber),
+      payerId: stringValue(batch.payerId),
+      payerUsername: stringValue(batch.payerUsername),
+      payeeId: stringValue(batch.payeeId),
+      payeeUsername: stringValue(batch.payeeUsername),
+      itemCount: numberValue(batch.itemCount),
+      expectedAmount: numberValue(batch.expectedAmount),
+      actualAmount: numberValue(batch.actualAmount),
+      depositorName: stringValue(batch.depositorName),
+      memo: stringValue(batch.memo),
+      status: batch.status === 'voided' ? 'voided' : 'confirmed',
+      confirmedAt: stringValue(batch.confirmedAt),
+    }
+  }) : []
+}
+
+export async function fetchSettlementBatchItemsV92(batchId: string): Promise<SettlementBatchItemDetail[]> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_settlement_batch_items_v92', { p_batch_id: batchId })
+  if (error) throw error
+  return Array.isArray(data) ? data.map((item) => {
+    const row = recordValue(item)
+    return {
+      paymentStepId: stringValue(row.paymentStepId),
+      orderId: stringValue(row.orderId),
+      orderNumber: stringValue(row.orderNumber),
+      storeName: stringValue(row.storeName),
+      registrantId: stringValue(row.registrantId),
+      registrantUsername: stringValue(row.registrantUsername),
+      registrantGroupName: stringValue(row.registrantGroupName),
+      programType: (row.programType as SettlementBatchItemDetail['programType']) ?? 'spark',
+      amount: numberValue(row.amount),
+    }
+  }) : []
 }
