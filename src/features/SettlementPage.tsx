@@ -560,15 +560,15 @@ export function SettlementPage({
             {user.role === 'admin' && <label><span>등록 그룹</span><select value={filters.groupName} onChange={(event) => setFilter('groupName', event.target.value)}><option value="">전체 그룹</option>{filterOptions.groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
             <label><span>프로그램</span><select value={filters.programType} onChange={(event) => setFilter('programType', event.target.value as ProgramType | 'all')}><option value="all">전체 프로그램</option><option value="spark">스파크</option><option value="spark_plus">스파크 +</option><option value="spark_s">스파크S</option></select></label>
             <label><span>상태</span><select value={filters.status} onChange={(event) => setFilter('status', event.target.value as SettlementFilters['status'])}><option value="waiting">입금대기</option><option value="confirmed">확인완료</option><option value="all">전체</option></select></label>
-            <label><span>시작일 시작</span><input type="date" value={filters.startDateFrom} onChange={(event) => setFilter('startDateFrom', event.target.value)} /></label>
-            <label><span>시작일 종료</span><input type="date" value={filters.startDateTo} onChange={(event) => setFilter('startDateTo', event.target.value)} /></label>
+            <label><span>시작일(부터)</span><input type="date" value={filters.startDateFrom} onChange={(event) => setFilter('startDateFrom', event.target.value)} /></label>
+            <label><span>시작일(까지)</span><input type="date" value={filters.startDateTo} onChange={(event) => setFilter('startDateTo', event.target.value)} /></label>
             <button className="secondary-button settlement-reset-button" onClick={resetFilters}>필터 초기화</button>
           </div>
 
           <div className="settlement-result-summary">
             <div><strong>검색 결과 {activePage.totalCount.toLocaleString('ko-KR')}건</strong><span>합계 {formatWon(activePage.totalAmount)}</span></div>
             <div><strong>지금 확인 가능 {activePage.readyCount.toLocaleString('ko-KR')}건</strong><span>{formatWon(activePage.readyAmount)}</span></div>
-            {filters.status !== 'confirmed' && activePage.readyCount > 0 && <button className="secondary-button small" onClick={selectFilteredReadyRows}>검색 결과 확인 가능 전체 선택</button>}
+            {filters.status !== 'confirmed' && activePage.readyCount > 0 && <button className="secondary-button small" onClick={selectFilteredReadyRows}>확인 가능 전체 선택</button>}
           </div>
 
           {settlementError && <div className="inline-error settlement-inline-error">{settlementError}</div>}
