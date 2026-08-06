@@ -14,6 +14,7 @@ export const PROGRAM_PAGE_MAP: Record<Page, ProgramType | null> = {
   sparkSOrders: 'spark_s',
   settlement: null,
   members: null,
+  operations: null,
   myinfo: null,
   notices: null,
 }

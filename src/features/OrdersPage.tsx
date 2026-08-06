@@ -9,7 +9,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import type { AppSettings, Order, OrderDraft, OrderStatus, ProgramType, User } from '../domain/types'
 import { calculateOperationDates, daysRemaining, earliestOrderStartDate, formatDate, isIsoDate, todayInSeoul } from '../lib/date'
 import { calculateAmount, formatWon } from '../lib/money'
-import { extractMid, STATUS_ORDER, validateDraft } from '../lib/order'
+import { allowedOrderStatuses, extractMid, STATUS_ORDER, validateDraft } from '../lib/order'
 import { getUserProgramPrice, labelForProgram, programMeta, unitLabelForProgram, unitPriceLabelForProgram } from '../lib/program'
 import { PageHeader } from './DashboardPage'
 
@@ -74,7 +74,7 @@ function excelDate(value: unknown): string {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
-export function OrdersPage({ user, orders, settings, now, programType, onCreateOrder, onCreateOrdersBulk, onStatusChange, onDeleteOrder }: {
+export function OrdersPage({ user, orders, settings, now, programType, onCreateOrder, onCreateOrdersBulk, onStatusChange, onArchiveOrder, onRestoreOrder }: {
   user: User
   orders: Order[]
   settings: AppSettings
@@ -82,10 +82,12 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   programType: ProgramType
   onCreateOrder: (draft: OrderDraft) => Promise<Order>
   onCreateOrdersBulk: (drafts: OrderDraft[]) => Promise<Order[]>
-  onStatusChange: (order: Order, status: OrderStatus) => Promise<void>
-  onDeleteOrder: (order: Order) => Promise<void>
+  onStatusChange: (order: Order, status: OrderStatus, reason: string) => Promise<void>
+  onArchiveOrder: (order: Order, reason: string) => Promise<void>
+  onRestoreOrder: (order: Order, reason: string) => Promise<void>
 }) {
   const [filter, setFilter] = useState<'전체' | OrderStatus>('전체')
+  const [archiveView, setArchiveView] = useState<'active' | 'archived'>('active')
   const [query, setQuery] = useState('')
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState<OrderDraft>(() => emptyDraft(programType, now))
@@ -110,7 +112,8 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   const sourceOrders = useMemo(() => orders.filter((order) => (order.programType ?? 'spark') === programType), [orders, programType])
 
   const visible = useMemo(() => {
-    const source = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
+    const owned = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
+    const source = owned.filter((order) => archiveView === 'archived' ? Boolean(order.archivedAt) : !order.archivedAt)
     return source
       .filter((order) => filter === '전체' || order.status === filter)
       .filter((order) => {
@@ -118,12 +121,13 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
         return !keyword || [order.id, order.creatorUsername, order.sponsorUsername ?? '', order.creatorGroupName, order.storeName, order.keyword, order.mid].some((value) => value.toLocaleLowerCase('ko-KR').includes(keyword))
       })
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
-  }, [filter, sourceOrders, query, user.id, user.role])
+  }, [archiveView, filter, sourceOrders, query, user.id, user.role])
 
   const counts = useMemo(() => {
-    const source = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
+    const owned = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
+    const source = owned.filter((order) => archiveView === 'archived' ? Boolean(order.archivedAt) : !order.archivedAt)
     return Object.fromEntries(['전체', ...STATUS_ORDER].map((status) => [status, status === '전체' ? source.length : source.filter((order) => order.status === status).length])) as Record<'전체' | OrderStatus, number>
-  }, [sourceOrders, user.id, user.role])
+  }, [archiveView, sourceOrders, user.id, user.role])
 
   const updateDraft = (field: keyof OrderDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -172,17 +176,27 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   }
 
   const changeStatus = async (order: Order, status: OrderStatus) => {
-    if (order.status === status || changingId) return
+    if (order.status === status || changingId || order.archivedAt) return
+    const reason = window.prompt(`${order.storeName} 상태를 ${status}(으)로 변경하는 사유를 입력해 주세요.`)?.trim()
+    if (!reason) return
     setChangingId(order.id)
-    try { await onStatusChange(order, status) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
+    try { await onStatusChange(order, status, reason) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
   }
 
-  const deleteOrder = async (order: Order) => {
+  const archiveOrder = async (order: Order) => {
     if (changingId) return
-    const ok = window.confirm(`${order.storeName} 작업을 삭제하시겠습니까? 삭제 후 복구할 수 없습니다.`)
-    if (!ok) return
+    const reason = window.prompt(`${order.storeName} 작업을 보관하는 사유를 입력해 주세요. 데이터와 정산 기록은 삭제되지 않습니다.`)?.trim()
+    if (!reason) return
     setChangingId(order.id)
-    try { await onDeleteOrder(order) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
+    try { await onArchiveOrder(order, reason) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
+  }
+
+  const restoreOrder = async (order: Order) => {
+    if (changingId) return
+    const reason = window.prompt(`${order.storeName} 작업을 복원하는 사유를 입력해 주세요.`)?.trim()
+    if (!reason) return
+    setChangingId(order.id)
+    try { await onRestoreOrder(order, reason) } catch (error) { window.alert(getErrorMessage(error)) } finally { setChangingId(null) }
   }
 
   const toggleAll = () => {
@@ -274,7 +288,7 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
       />
 
       {user.role !== 'admin' && formOpen && <section className="panel intake-form-panel">
-        <div className="panel-header"><div><h2 className="program-heading"><ProgramIcon programType={programType} size={24} />{programLabel} 접수 신청</h2><p>회원 단가 {formatWon(unitPrice)} / 타 · 시작일은 익일부터 직접 지정할 수 있습니다.</p></div></div>
+        <div className="panel-header"><div><h2 className="program-heading"><ProgramIcon programType={programType} size={24} />{programLabel} 접수 신청</h2><p>회원 단가 {formatWon(unitPrice)} / {quantityUnit} · 시작일은 익일부터 직접 지정할 수 있습니다.</p></div></div>
         <div className="form-grid compact-form">
           <Field className="span-2" label="플레이스 URL" required error={errors.placeUrl}><div className="input-with-status"><input value={draft.placeUrl} onChange={(event) => updateDraft('placeUrl', event.target.value)} placeholder="https://m.place.naver.com/place/1234567890/home" />{extractMid(draft.placeUrl) && <span>MID {extractMid(draft.placeUrl)}</span>}</div></Field>
           <Field label="상호명" required error={errors.storeName}><input value={draft.storeName} onChange={(event) => updateDraft('storeName', event.target.value)} placeholder="상호명 입력" maxLength={50} /></Field>
@@ -289,10 +303,11 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
       </section>}
 
       <section className="panel orders-panel fill-panel">
+        <div className="archive-view-tabs"><button className={archiveView === 'active' ? 'active' : ''} onClick={() => { setArchiveView('active'); setSelectedIds(new Set()) }}>운영 작업</button><button className={archiveView === 'archived' ? 'active' : ''} onClick={() => { setArchiveView('archived'); setSelectedIds(new Set()) }}>보관함 <span>{sourceOrders.filter((order) => order.archivedAt && (user.role === 'admin' || order.createdBy === user.id)).length}</span></button></div>
         <div className="order-toolbar"><div className="filter-tabs">{(['전체', ...STATUS_ORDER] as const).map((status) => <button key={status} className={filter === status ? 'active' : ''} onClick={() => setFilter(status)}>{status}<span>{counts[status]}</span></button>)}</div><div className="toolbar-actions"><label className="search-box"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="등록자, 추천인, 그룹명, 상호명, MID 검색" /></label>{user.role === 'admin' && <button className="secondary-button small" onClick={downloadExcel}><Icon name="download" />엑셀</button>}</div></div>
         {visible.length === 0 ? <div className="empty-state fill-empty-state">조건에 맞는 작업이 없습니다.</div> : <>
-          <div className="desktop-table"><table className="orders-table"><thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>추천인</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th><th>MID</th><th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{showProgress && <th>오늘 진행</th>}<th>관리</th></tr></thead><tbody>{visible.map((order, index) => { const canDelete = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status)); return <tr key={order.id}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); next.has(order.id) ? next.delete(order.id) : next.add(order.id); return next })} /></td>}<td>{index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, now)}</td>{user.role === 'admin' && <><td>{order.creatorUsername}</td><td>{order.sponsorUsername || '관리자 직속'}</td><td>{order.creatorGroupName || '-'}</td></>}<td><strong>{order.storeName}</strong></td><td><a href={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td><td>{order.mid}</td><td>{order.keyword}</td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</td><td><StatusBadge status={order.status} /></td>{showProgress && <td>{order.status === '구동중' ? <ProgressGauge order={order} now={now} compact /> : <span className="muted">-</span>}</td>}<td><div className="table-action-stack">{user.role === 'admin' && <select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{STATUS_ORDER.map((status) => <option key={status}>{status}</option>)}</select>}{canDelete ? <button className="secondary-button small danger-outline" disabled={changingId === order.id} onClick={() => void deleteOrder(order)}><Icon name="trash" />삭제</button> : <span className="muted">-</span>}</div></td></tr>})}</tbody></table></div>
-          <div className="mobile-order-list">{visible.map((order) => { const canDelete = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status)); return <article key={order.id} className="mobile-order-card"><div><strong>{order.storeName}</strong><StatusBadge status={order.status} /></div><p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{user.role === 'admin' && <><div><dt>추천인</dt><dd>{order.sponsorUsername || '관리자 직속'}</dd></div><div><dt>그룹명</dt><dd>{order.creatorGroupName || '-'}</dd></div></>}</dl>{order.status === '구동중' && showProgress && <ProgressGauge order={order} now={now} />}{user.role === 'admin' && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{STATUS_ORDER.map((status) => <option key={status}>{status}</option>)}</select>}{canDelete && <button className="secondary-button small danger-outline" disabled={changingId === order.id} onClick={() => void deleteOrder(order)}><Icon name="trash" />삭제</button>}</article>})}</div>
+          <div className="desktop-table"><table className="orders-table"><thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>추천인</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th><th>MID</th><th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{archiveView === 'archived' && <th>보관 사유</th>}{showProgress && <th>오늘 진행</th>}<th>관리</th></tr></thead><tbody>{visible.map((order, index) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <tr key={order.id}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); next.has(order.id) ? next.delete(order.id) : next.add(order.id); return next })} /></td>}<td>{index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, now)}</td>{user.role === 'admin' && <><td>{order.creatorUsername}</td><td>{order.sponsorUsername || '관리자 직속'}</td><td>{order.creatorGroupName || '-'}</td></>}<td><strong>{order.storeName}</strong></td><td><a href={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td><td>{order.mid}</td><td>{order.keyword}</td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</td><td><StatusBadge status={order.status} /></td>{archiveView === 'archived' && <td>{order.archiveReason || '-'}</td>}{showProgress && <td>{order.status === '구동중' ? <ProgressGauge order={order} now={now} compact /> : <span className="muted">-</span>}</td>}<td><div className="table-action-stack">{user.role === 'admin' && !order.archivedAt && <select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}{!canArchive && !canRestore && <span className="muted">-</span>}</div></td></tr>})}</tbody></table></div>
+          <div className="mobile-order-list">{visible.map((order) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <article key={order.id} className="mobile-order-card"><div><strong>{order.storeName}</strong><StatusBadge status={order.status} /></div><p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{order.archivedAt && <div><dt>보관 사유</dt><dd>{order.archiveReason || '-'}</dd></div>}{user.role === 'admin' && <><div><dt>추천인</dt><dd>{order.sponsorUsername || '관리자 직속'}</dd></div><div><dt>그룹명</dt><dd>{order.creatorGroupName || '-'}</dd></div></>}</dl>{order.status === '구동중' && showProgress && <ProgressGauge order={order} now={now} />}{user.role === 'admin' && !order.archivedAt && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}</article>})}</div>
         </>}
       </section>
 

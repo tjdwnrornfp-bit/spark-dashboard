@@ -1,0 +1,3 @@
+DB FIRST: preflight_v9.sql -> update_v9_stability.sql -> verify_v9_stability.sql
+Then copy frontend files and run npm install / npm run build.
+The full project ZIP is preferred when reorganizing the old supabase SQL files.

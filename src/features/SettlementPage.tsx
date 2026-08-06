@@ -41,14 +41,16 @@ export function SettlementPage({ user, members: _members, orders, paymentSteps, 
   const [saving, setSaving] = useState(false)
   const [changingId, setChangingId] = useState<string | null>(null)
 
-  const visibleOrders = user.role === 'admin' ? orders : orders.filter((order) => order.createdBy === user.id)
+  const activeOrders = useMemo(() => orders.filter((order) => !order.archivedAt), [orders])
+  const activeOrderIds = useMemo(() => new Set(activeOrders.flatMap((order) => [order.dbId ?? order.id, order.id])), [activeOrders])
+  const visibleOrders = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const incomingSteps = useMemo(
-    () => paymentSteps.filter((step) => step.payeeId === user.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [paymentSteps, user.id],
+    () => paymentSteps.filter((step) => step.payeeId === user.id && activeOrderIds.has(step.orderDbId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [activeOrderIds, paymentSteps, user.id],
   )
   const outgoingSteps = useMemo(
-    () => paymentSteps.filter((step) => step.payerId === user.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [paymentSteps, user.id],
+    () => paymentSteps.filter((step) => step.payerId === user.id && activeOrderIds.has(step.orderDbId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [activeOrderIds, paymentSteps, user.id],
   )
 
   // 관리자에게는 최종 관리자 정산 단계만, 대행사·총판에게는 본인이 실제 납부할 단계만 집계합니다.

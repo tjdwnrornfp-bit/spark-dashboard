@@ -12,6 +12,7 @@ const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType
   { page: 'sparkSOrders', label: '스파크S 접수', programType: 'spark_s' },
   { page: 'settlement', label: '정산', icon: 'wallet' },
   { page: 'members', label: '회원관리', icon: 'users' },
+  { page: 'operations', label: '운영기록', icon: 'shield' },
   { page: 'myinfo', label: '내 정보', icon: 'user' },
   { page: 'notices', label: '공지사항', icon: 'notice' },
 ]
@@ -40,7 +41,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
       <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-logo"><Logo /></div>
         <nav>
-          {NAV_ITEMS.map((item) => {
+          {NAV_ITEMS.filter((item) => item.page !== 'operations' || user.role === 'admin').map((item) => {
             const badge = item.page === 'notifications' ? unreadCount : 0
             return (
               <button key={item.page} className={page === item.page ? 'nav-active' : ''} onClick={() => navigate(item.page)}>

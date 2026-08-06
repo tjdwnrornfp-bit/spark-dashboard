@@ -8,10 +8,12 @@ import { MembersPage } from './features/MembersPage'
 import { MyInfoPage } from './features/MyInfoPage'
 import { NoticesPage } from './features/NoticesPage'
 import { NotificationsPage } from './features/NotificationsPage'
+import { OperationsPage } from './features/OperationsPage'
 import { OrdersPage } from './features/OrdersPage'
 import { SettlementPage } from './features/SettlementPage'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import {
+  archiveRemoteOrder,
   confirmRemotePaymentStep,
   createRemoteNotice,
   createRemoteOrder,
@@ -19,11 +21,11 @@ import {
   deleteAllRemoteNotifications,
   deleteRemoteNotice,
   deleteRemoteNotification,
-  deleteRemoteOrder,
   fetchProfile,
   fetchRemoteSnapshot,
   markAllRemoteNotificationsRead,
   markRemoteNotificationRead,
+  restoreRemoteOrder,
   reviewRemoteMember,
   saveRemoteAccount,
   saveRemoteSettings,
@@ -52,7 +54,7 @@ function errorMessage(error: unknown, fallback: string): string {
   if (/user already registered|duplicate key|profiles_username_key_key|이미 사용 중/i.test(message)) return '이미 사용 중이거나 가입 신청된 아이디입니다.'
   if (/password/i.test(message) && /short|weak|length/i.test(message)) return '서버 비밀번호 정책에 맞지 않습니다. Supabase 비밀번호 최소 길이 설정을 확인해 주세요.'
   if (/database error saving new user|unexpected_failure|handle_new_auth_user/i.test(message)) {
-    return '회원가입 데이터베이스 연결에 문제가 있습니다. Supabase에서 repair_signup_v8.sql을 실행해 주세요.'
+    return '회원가입 데이터베이스 연결에 문제가 있습니다. Supabase에서 supabase/maintenance/repair_signup_v8.sql을 실행해 주세요.'
   }
   if (!message || message === '{}' || message === '[object Object]') return fallback
   return message
@@ -136,7 +138,7 @@ export default function App() {
       if (refreshedSelf && refreshedSelf.updatedAt !== remoteUser.updatedAt) setRemoteUser(refreshedSelf)
       setRemoteError('')
     } catch (error) {
-      setRemoteError(errorMessage(error, '서버 데이터를 불러오지 못했습니다. update_v8.sql 적용 여부를 확인해 주세요.'))
+      setRemoteError(errorMessage(error, '서버 데이터를 불러오지 못했습니다. update_v9_stability.sql 적용 여부를 확인해 주세요.'))
     }
   }, [remoteUser])
 
@@ -318,10 +320,10 @@ export default function App() {
     return created
   }
 
-  const handleOrderStatusChange = async (order: Order, status: OrderStatus) => {
+  const handleOrderStatusChange = async (order: Order, status: OrderStatus, reason: string) => {
     if (!user || user.role !== 'admin') throw new Error('관리자만 상태를 변경할 수 있습니다.')
     if (isSupabaseConfigured) {
-      const updated = await setRemoteOrderStatus(order, status)
+      const updated = await setRemoteOrderStatus(order, status, reason)
       setRemoteOrders((current) => current.map((item) => item.dbId === updated.dbId ? updated : item))
       return
     }
@@ -330,26 +332,34 @@ export default function App() {
     setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), userId: order.createdBy, role: 'all', title: status === '입금완료' ? '입금 확인 완료' : '작업 상태 변경', message: status === '입금완료' ? `관리자가 ${order.storeName} 작업 입금을 확인했습니다.` : `${order.storeName} 작업 상태가 ${status}(으)로 변경되었습니다.`, read: false, orderId: order.id }, ...current])
   }
 
-  const handleDeleteOrder = async (order: Order) => {
+  const handleArchiveOrder = async (order: Order, reason: string) => {
     if (!user) throw new Error('로그인이 필요합니다.')
-    const canDelete = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))
-    if (!canDelete) throw new Error('삭제 권한이 없습니다.')
+    const canArchive = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))
+    if (!canArchive) throw new Error('보관 권한이 없습니다.')
     if (isSupabaseConfigured) {
-      await deleteRemoteOrder(order)
-      setRemoteOrders((current) => current.filter((item) => (item.dbId ?? item.id) !== (order.dbId ?? order.id)))
-      setRemotePaymentSteps((current) => current.filter((item) => item.orderDbId !== (order.dbId ?? order.id)))
-      setRemoteNotifications((current) => current.filter((item) => item.orderId !== order.id))
+      const updated = await archiveRemoteOrder(order, reason)
+      setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (updated.dbId ?? updated.id) ? updated : item))
       return
     }
-    setLocalOrders((current) => current.filter((item) => item.id !== order.id))
-    setLocalPaymentSteps((current) => current.filter((item) => item.orderDbId !== (order.dbId ?? order.id) && item.orderNumber !== order.id))
-    setLocalNotifications((current) => current.filter((item) => item.orderId !== order.id))
+    const nowIso = new Date().toISOString()
+    setLocalOrders((current) => current.map((item) => item.id === order.id ? { ...item, archivedAt: nowIso, archivedBy: user.id, archiveReason: reason, lockVersion: item.lockVersion + 1, updatedAt: nowIso } : item))
+  }
+
+  const handleRestoreOrder = async (order: Order, reason: string) => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 작업을 복원할 수 있습니다.')
+    if (isSupabaseConfigured) {
+      const updated = await restoreRemoteOrder(order, reason)
+      setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (updated.dbId ?? updated.id) ? updated : item))
+      return
+    }
+    const nowIso = new Date().toISOString()
+    setLocalOrders((current) => current.map((item) => item.id === order.id ? { ...item, archivedAt: null, archivedBy: null, archiveReason: '', lockVersion: item.lockVersion + 1, updatedAt: nowIso } : item))
   }
 
   const handleMemberReview = async (params: MemberReviewInput) => {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (isSupabaseConfigured) {
-      const updated = await reviewRemoteMember({ memberId: params.member.id, role: params.role, prices: params.prices, approvalStatus: params.approvalStatus, groupName: params.groupName })
+      const updated = await reviewRemoteMember({ memberId: params.member.id, role: params.role, prices: params.prices, approvalStatus: params.approvalStatus, groupName: params.groupName, memberUpdatedAt: params.member.updatedAt })
       setRemoteMembers((current) => current.map((member) => member.id === updated.id ? updated : member))
       return
     }
@@ -440,9 +450,10 @@ export default function App() {
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
     {page === 'dashboard' && <DashboardPage user={user} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {activeProgram && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onDeleteOrder={handleDeleteOrder} />}
+    {activeProgram && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} />}
+    {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
     {page === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}
   </AppShell>

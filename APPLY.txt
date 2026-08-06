@@ -1,14 +1,11 @@
-SPARK v8.2 로고 패치 적용
+SPARK v8.4 S 아이콘 수정 패치
 
-1. 이 폴더의 src 내용을 기존 프로젝트의 src에 덮어씁니다.
-2. 기존 PNG 아이콘은 더 이상 사용하지 않습니다. 아래 파일은 삭제해도 됩니다.
-   src/assets/spark.png
-   src/assets/spark-plus.png
-   src/assets/spark-s.png
-3. npm run build
-4. git add .
-5. git commit -m "Replace program icons with crisp vector logos"
-6. git pull --rebase origin main
-7. git push origin main
+교체 파일:
+src/components/ProgramIcon.tsx
 
-Supabase SQL 변경은 없습니다.
+적용 후:
+npm run build
+git add src/components/ProgramIcon.tsx
+git commit -m "Fix SPARK S icon shape"
+git pull --rebase origin main
+git push origin main

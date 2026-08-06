@@ -73,6 +73,10 @@ export function createOrder(user: User, draft: OrderDraft, settings: AppSettings
     activatedAt: null,
     stoppedAt: null,
     paymentNotifiedAt: null,
+    archivedAt: null,
+    archivedBy: null,
+    archiveReason: '',
+    lockVersion: 1,
     updatedAt: iso,
   }
 }
@@ -87,6 +91,7 @@ export function transitionOrder(order: Order, nextStatus: OrderStatus, now = new
       : (nextStatus === '입금대기' || nextStatus === '입금완료' ? null : order.activatedAt),
     stoppedAt: nextStatus === '정지' ? iso : null,
     paymentNotifiedAt: nextStatus === '입금완료' && !order.paymentNotifiedAt ? iso : order.paymentNotifiedAt,
+    lockVersion: order.lockVersion + 1,
     updatedAt: iso,
   }
 }
@@ -103,17 +108,18 @@ export function applyScheduledTransitions(orders: Order[], members: User[], _set
   const transitions: ScheduledTransition[] = []
   let changed = false
   const nextOrders = orders.map((order) => {
+    if (order.archivedAt) return order
     const member = members.find((item) => item.id === order.createdBy)
     const role = member?.role === 'distributor' ? 'distributor' : 'agency'
     if (order.status === '입금완료' && order.startDate <= today && order.endDate >= today) {
       changed = true
       transitions.push({ orderId: order.id, userId: order.createdBy, role, nextStatus: '구동중' })
-      return { ...order, status: '구동중' as const, activatedAt: now.toISOString(), updatedAt: now.toISOString() }
+      return { ...order, status: '구동중' as const, activatedAt: now.toISOString(), lockVersion: order.lockVersion + 1, updatedAt: now.toISOString() }
     }
     if (['입금완료', '구동중', '정지'].includes(order.status) && order.endDate < today) {
       changed = true
       transitions.push({ orderId: order.id, userId: order.createdBy, role, nextStatus: '만료' })
-      return { ...order, status: '만료' as const, updatedAt: now.toISOString() }
+      return { ...order, status: '만료' as const, lockVersion: order.lockVersion + 1, updatedAt: now.toISOString() }
     }
     return order
   })
@@ -121,3 +127,15 @@ export function applyScheduledTransitions(orders: Order[], members: User[], _set
 }
 
 export const STATUS_ORDER: OrderStatus[] = ['입금대기', '입금완료', '구동중', '정지', '만료']
+
+const ALLOWED_STATUS_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
+  입금대기: ['구동중', '정지'],
+  입금완료: ['구동중', '정지'],
+  구동중: ['정지', '만료'],
+  정지: ['입금대기', '구동중', '만료'],
+  만료: ['정지'],
+}
+
+export function allowedOrderStatuses(current: OrderStatus): OrderStatus[] {
+  return [current, ...ALLOWED_STATUS_TRANSITIONS[current]]
+}

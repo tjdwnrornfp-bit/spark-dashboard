@@ -3,7 +3,7 @@ export type MemberRole = Exclude<Role, 'admin'>
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
 export type ProgramType = 'spark' | 'spark_plus' | 'spark_s'
-export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'settlement' | 'members' | 'myinfo' | 'notices'
+export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
 
 export interface ProgramPriceMap {
   spark: number
@@ -69,6 +69,10 @@ export interface Order {
   activatedAt: string | null
   stoppedAt: string | null
   paymentNotifiedAt: string | null
+  archivedAt: string | null
+  archivedBy: string | null
+  archiveReason: string
+  lockVersion: number
   updatedAt: string
 }
 
@@ -149,4 +153,28 @@ export interface AccountDraft {
   bank: string
   accountNumber: string
   accountHolder: string
+}
+
+export interface AuditLog {
+  id: string
+  createdAt: string
+  actorId: string | null
+  actorUsername: string
+  actorRole: Role | null
+  action: string
+  entityType: 'order' | 'member' | 'payment' | 'system'
+  entityId: string | null
+  entityLabel: string
+  metadata: Record<string, unknown>
+}
+
+export interface OperationsHealth {
+  schemaVersion: string
+  activeAdmins: number
+  activeOrders: number
+  archivedOrders: number
+  ordersWithoutPaymentSteps: number
+  invalidPaymentStates: number
+  inactiveCronJobs: number
+  checkedAt: string
 }

@@ -20,7 +20,8 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
   now: Date
   onNavigate: (page: Page) => void
 }) {
-  const visible = user.role === 'admin' ? orders : orders.filter((order) => order.createdBy === user.id)
+  const activeOrders = orders.filter((order) => !order.archivedAt)
+  const visible = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const running = visible.filter((order) => order.status === '구동중')
   const paidWaitingStart = visible.filter((order) => order.status === '입금완료')
   const runningShots = running.filter((order) => order.programType !== 'spark_s').reduce((sum, order) => sum + order.dailyShots, 0)

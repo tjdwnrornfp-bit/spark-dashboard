@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-export type IconName = 'dashboard' | 'bell' | 'orders' | 'wallet' | 'users' | 'user' | 'notice' | 'logout' | 'plus' | 'check' | 'close' | 'menu' | 'download' | 'copy' | 'chevron' | 'search' | 'lock' | 'trash' | 'upload'
+export type IconName = 'dashboard' | 'bell' | 'orders' | 'wallet' | 'users' | 'user' | 'notice' | 'logout' | 'plus' | 'check' | 'close' | 'menu' | 'download' | 'copy' | 'chevron' | 'search' | 'lock' | 'trash' | 'upload' | 'history' | 'archive' | 'restore' | 'refresh' | 'shield'
 
 export function Icon({ name, size = 16 }: { name: IconName; size?: number }): ReactNode {
   const common = { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 1.8, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const, 'aria-hidden': true }
@@ -24,6 +24,11 @@ export function Icon({ name, size = 16 }: { name: IconName; size?: number }): Re
     search: <><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></>,
     lock: <><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></>,
     trash: <><path d="M4 7h16"/><path d="M9 7V4h6v3"/><path d="M7 7l1 14h8l1-14"/><path d="M10 11v6M14 11v6"/></>,
+    history: <><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v6h6"/><path d="M12 7v5l3 2"/></>,
+    archive: <><rect x="3" y="4" width="18" height="5" rx="1"/><path d="M5 9v10h14V9M9 13h6"/></>,
+    restore: <><path d="M4 7v5h5"/><path d="M5.5 16a8 8 0 1 0 .4-8.5L4 12"/></>,
+    refresh: <><path d="M20 6v5h-5"/><path d="M4 18v-5h5"/><path d="M18.5 11A7 7 0 0 0 6 7.5L4 11M5.5 13A7 7 0 0 0 18 16.5l2-3.5"/></>,
+    shield: <><path d="M12 3l7 3v5c0 5-3 8-7 10-4-2-7-5-7-10V6z"/><path d="m9 12 2 2 4-5"/></>,
   }
   return <svg {...common}>{paths[name]}</svg>
 }
