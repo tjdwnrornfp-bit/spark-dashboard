@@ -21,6 +21,8 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
   onNavigate: (page: Page) => void
 }) {
   const activeOrders = orders.filter((order) => !order.archivedAt)
+  const archivedOrderIds = new Set(orders.filter((order) => order.archivedAt).flatMap((order) => [order.dbId ?? order.id, order.id]))
+  const activePaymentSteps = paymentSteps.filter((step) => !archivedOrderIds.has(step.orderDbId))
   const visible = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const running = visible.filter((order) => order.status === '구동중')
   const paidWaitingStart = visible.filter((order) => order.status === '입금완료')
@@ -30,12 +32,12 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
   const totalContractCases = visible.filter((order) => order.programType === 'spark_s').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
 
   const settlementSteps = user.role === 'admin'
-    ? paymentSteps.filter((step) => step.payeeId === user.id)
-    : paymentSteps.filter((step) => step.payerId === user.id)
+    ? activePaymentSteps.filter((step) => step.payeeId === user.id)
+    : activePaymentSteps.filter((step) => step.payerId === user.id)
   const waitingAmount = settlementSteps.filter((step) => !step.confirmedAt).reduce((sum, step) => sum + step.totalAmount, 0)
   const confirmedAmount = settlementSteps.filter((step) => step.confirmedAt).reduce((sum, step) => sum + step.totalAmount, 0)
   const totalAmount = waitingAmount + confirmedAmount
-  const receivedAmount = user.role === 'admin' ? 0 : paymentSteps
+  const receivedAmount = user.role === 'admin' ? 0 : activePaymentSteps
     .filter((step) => step.payeeId === user.id && step.confirmedAt)
     .reduce((sum, step) => sum + step.totalAmount, 0)
 

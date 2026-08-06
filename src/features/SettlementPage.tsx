@@ -16,7 +16,7 @@ function getErrorMessage(error: unknown): string {
 
 function paymentStepUnit(step: PaymentStep, orders: Order[]): '타' | '건' {
   const order = orders.find((item) => (item.dbId ?? item.id) === step.orderDbId || item.id === step.orderNumber)
-  return unitLabelForProgram(order?.programType ?? 'spark')
+  return unitLabelForProgram(step.programType ?? order?.programType ?? 'spark')
 }
 
 function adminRegistrantLabel(step: PaymentStep, orders: Order[]): string {
@@ -42,15 +42,16 @@ export function SettlementPage({ user, members: _members, orders, paymentSteps, 
   const [changingId, setChangingId] = useState<string | null>(null)
 
   const activeOrders = useMemo(() => orders.filter((order) => !order.archivedAt), [orders])
-  const activeOrderIds = useMemo(() => new Set(activeOrders.flatMap((order) => [order.dbId ?? order.id, order.id])), [activeOrders])
+  const archivedOrderIds = useMemo(() => new Set(orders.filter((order) => order.archivedAt).flatMap((order) => [order.dbId ?? order.id, order.id])), [orders])
+  const activePaymentSteps = useMemo(() => paymentSteps.filter((step) => !archivedOrderIds.has(step.orderDbId)), [archivedOrderIds, paymentSteps])
   const visibleOrders = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const incomingSteps = useMemo(
-    () => paymentSteps.filter((step) => step.payeeId === user.id && activeOrderIds.has(step.orderDbId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [activeOrderIds, paymentSteps, user.id],
+    () => activePaymentSteps.filter((step) => step.payeeId === user.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [activePaymentSteps, user.id],
   )
   const outgoingSteps = useMemo(
-    () => paymentSteps.filter((step) => step.payerId === user.id && activeOrderIds.has(step.orderDbId)).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
-    [activeOrderIds, paymentSteps, user.id],
+    () => activePaymentSteps.filter((step) => step.payerId === user.id).sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    [activePaymentSteps, user.id],
   )
 
   // 관리자에게는 최종 관리자 정산 단계만, 대행사·총판에게는 본인이 실제 납부할 단계만 집계합니다.
@@ -108,7 +109,7 @@ export function SettlementPage({ user, members: _members, orders, paymentSteps, 
       <section className={`settlement-chain-grid ${user.role === 'admin' ? 'admin-settlement-grid' : ''}`}>
         <section className="panel compact-panel fill-panel settlement-incoming-panel">
           <div className="panel-header"><div><h2>{user.role === 'admin' ? '관리자 입금 확인' : '하위 대행사 입금 확인'}</h2><p>실제 입금을 확인한 뒤 입금확인 버튼을 누릅니다.</p></div></div>
-          {incomingSteps.length === 0 ? <div className="empty-state">확인할 입금 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-incoming-table"><thead><tr><th>작업</th><th>{user.role === 'admin' ? '등록 그룹' : '입금자'}</th><th>단가</th><th>입금액</th><th>상태</th><th>확인</th></tr></thead><tbody>{incomingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{user.role === 'admin' ? adminRegistrantLabel(step, orders) : step.payerUsername}</td><td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : <span className="payment-waiting-text">입금대기</span>}</td><td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : '입금확인'}</button>}</td></tr>)}</tbody></table></div>}
+          {incomingSteps.length === 0 ? <div className="empty-state">확인할 입금 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-incoming-table"><thead><tr><th>작업</th><th>{user.role === 'admin' ? '등록 그룹' : '입금자'}</th><th>단가</th><th>입금액</th><th>상태</th><th>확인</th></tr></thead><tbody>{incomingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{user.role === 'admin' ? adminRegistrantLabel(step, orders) : step.payerUsername}</td><td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : step.canConfirm ? <span className="payment-waiting-text">입금대기</span> : <span className="payment-chain-waiting-text">이전 단계 확인 대기</span>}</td><td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} title={!step.canConfirm ? `이전 정산 ${Math.max(1, step.previousPendingCount)}건의 확인이 먼저 필요합니다.` : '실제 입금 확인 후 처리합니다.'} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>}</td></tr>)}</tbody></table></div>}
         </section>
 
         {user.role !== 'admin' && <section className="panel compact-panel fill-panel settlement-outgoing-panel">

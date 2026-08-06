@@ -89,6 +89,7 @@ export interface OrderDraft {
 
 export interface PaymentStep {
   id: string
+  programType: ProgramType
   orderDbId: string
   orderNumber: string
   storeName: string
@@ -102,6 +103,8 @@ export interface PaymentStep {
   vatAmount: number
   totalAmount: number
   confirmedAt: string | null
+  canConfirm: boolean
+  previousPendingCount: number
   createdAt: string
 }
 

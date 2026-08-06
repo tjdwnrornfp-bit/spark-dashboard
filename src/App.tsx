@@ -82,7 +82,7 @@ function buildLocalPaymentSteps(order: Order, members: User[]): PaymentStep[] {
     if (!payee) break
     const unitPrice = getUserProgramPrice(payer, order.programType)
     const amount = calculateAmount(order.dailyShots, order.operationDays, unitPrice)
-    steps.push({ id: crypto.randomUUID(), orderDbId: order.dbId ?? order.id, orderNumber: order.id, storeName: order.storeName, stepOrder, payerId: payer.id, payerUsername: payer.username, payeeId: payee.id, payeeUsername: payee.username, unitPrice, ...amount, confirmedAt: null, createdAt: order.createdAt })
+    steps.push({ id: crypto.randomUUID(), programType: order.programType, orderDbId: order.dbId ?? order.id, orderNumber: order.id, storeName: order.storeName, stepOrder, payerId: payer.id, payerUsername: payer.username, payeeId: payee.id, payeeUsername: payee.username, unitPrice, ...amount, confirmedAt: null, canConfirm: stepOrder === 1, previousPendingCount: stepOrder - 1, createdAt: order.createdAt })
     if (payee.role === 'admin') break
     payer = payee
     stepOrder += 1
@@ -338,7 +338,10 @@ export default function App() {
     if (!canArchive) throw new Error('보관 권한이 없습니다.')
     if (isSupabaseConfigured) {
       const updated = await archiveRemoteOrder(order, reason)
-      setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (updated.dbId ?? updated.id) ? updated : item))
+      const orderKey = updated.dbId ?? updated.id
+      setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === orderKey ? updated : item))
+      setRemotePaymentSteps((current) => current.filter((step) => step.orderDbId !== orderKey))
+      void refreshRemote()
       return
     }
     const nowIso = new Date().toISOString()
@@ -350,6 +353,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const updated = await restoreRemoteOrder(order, reason)
       setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (updated.dbId ?? updated.id) ? updated : item))
+      await refreshRemote()
       return
     }
     const nowIso = new Date().toISOString()
@@ -398,12 +402,16 @@ export default function App() {
     if (!user || step.payeeId !== user.id) throw new Error('입금 확인 권한이 없습니다.')
     if (isSupabaseConfigured) {
       const updated = await confirmRemotePaymentStep(step.id)
-      setRemotePaymentSteps((current) => current.map((item) => item.id === updated.id ? updated : item))
+      setRemotePaymentSteps((current) => current.map((item) => item.id === updated.id ? { ...item, confirmedAt: updated.confirmedAt, canConfirm: false } : item))
       void refreshRemote()
       return
     }
     const confirmedAt = new Date().toISOString()
-    const updatedSteps = localPaymentSteps.map((item) => item.id === step.id ? { ...item, confirmedAt } : item)
+    const confirmedSteps = localPaymentSteps.map((item) => item.id === step.id ? { ...item, confirmedAt, canConfirm: false } : item)
+    const updatedSteps = confirmedSteps.map((item) => {
+      const previousPendingCount = confirmedSteps.filter((candidate) => candidate.orderDbId === item.orderDbId && candidate.stepOrder < item.stepOrder && !candidate.confirmedAt).length
+      return { ...item, previousPendingCount, canConfirm: !item.confirmedAt && previousPendingCount === 0 }
+    })
     setLocalPaymentSteps(updatedSteps)
     const orderSteps = updatedSteps.filter((item) => item.orderDbId === step.orderDbId)
     if (orderSteps.length > 0 && orderSteps.every((item) => item.confirmedAt)) {

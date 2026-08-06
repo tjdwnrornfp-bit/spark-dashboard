@@ -99,6 +99,7 @@ export function mapOrder(row: Record<string, unknown>): Order {
 export function mapPaymentStep(row: Record<string, unknown>): PaymentStep {
   return {
     id: stringValue(row.id),
+    programType: (row.program_type as PaymentStep['programType']) ?? 'spark',
     orderDbId: stringValue(row.order_id),
     orderNumber: stringValue(row.order_number),
     storeName: stringValue(row.store_name),
@@ -112,6 +113,8 @@ export function mapPaymentStep(row: Record<string, unknown>): PaymentStep {
     vatAmount: numberValue(row.vat_amount),
     totalAmount: numberValue(row.total_amount),
     confirmedAt: nullableString(row.confirmed_at),
+    canConfirm: row.can_confirm === undefined ? !nullableString(row.confirmed_at) : Boolean(row.can_confirm),
+    previousPendingCount: numberValue(row.previous_pending_count),
     createdAt: stringValue(row.created_at),
   }
 }
@@ -210,15 +213,20 @@ export async function fetchRemoteSnapshot(): Promise<{
   settings: AppSettings
 }> {
   const client = requiredClient()
-  const [profilesResult, ordersResult, stepsResult, accountResult, notificationsResult, noticesResult, settingsResult] = await Promise.all([
+  const [profilesResult, ordersResult, activeStepsResult, accountResult, notificationsResult, noticesResult, settingsResult] = await Promise.all([
     client.from('profiles').select('*').order('requested_at', { ascending: false }),
     client.from('orders').select('*').order('created_at', { ascending: true }),
-    client.from('payment_steps').select('*').order('created_at', { ascending: true }).order('step_order', { ascending: true }),
+    client.rpc('get_my_active_payment_steps_v91'),
     client.rpc('get_my_payment_account'),
     client.from('notifications').select('*, orders(order_number)').order('created_at', { ascending: false }),
     client.from('notices').select('*').order('created_at', { ascending: false }),
     client.from('app_settings').select('*').eq('id', true).single(),
   ])
+
+  let stepsResult = activeStepsResult
+  if (activeStepsResult.error && ['PGRST202', '42883'].includes(String(activeStepsResult.error.code ?? ''))) {
+    stepsResult = await client.from('payment_steps').select('*').order('created_at', { ascending: true }).order('step_order', { ascending: true })
+  }
 
   const firstError = [profilesResult, ordersResult, stepsResult, accountResult, notificationsResult, noticesResult, settingsResult].find((result) => result.error)?.error
   if (firstError) throw firstError

@@ -1489,3 +1489,13 @@ td small { margin-top: 4px; font-size: 10px; }
   .operations-toolbar { align-items: stretch; flex-direction: column; }
   .operations-toolbar select { width: 100%; }
 }
+
+/* v9.1 settlement chain consistency */
+.payment-chain-waiting-text {
+  color: #667085;
+  font-size: 12px;
+  font-weight: 700;
+}
+.payment-confirm-button:disabled {
+  cursor: not-allowed;
+}
