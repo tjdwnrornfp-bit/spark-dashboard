@@ -114,11 +114,6 @@ function makeLocalOptions(rows: SettlementRow[]): SettlementFilterOptions {
   }
 }
 
-function moneyInputValue(value: string): number {
-  const digits = value.replace(/[^0-9]/g, '')
-  return digits ? Number(digits) : 0
-}
-
 export function SettlementPage({
   user,
   members: _members,
@@ -161,8 +156,6 @@ export function SettlementPage({
   const [selectAllFiltered, setSelectAllFiltered] = useState(false)
   const [excludedRows, setExcludedRows] = useState<Map<string, SettlementRow>>(new Map())
   const [quote, setQuote] = useState<SettlementQuote | null>(null)
-  const [confirmations, setConfirmations] = useState<SettlementConfirmationInput[]>([])
-  const [batchMemo, setBatchMemo] = useState('')
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [batchConfirming, setBatchConfirming] = useState(false)
   const [batchResult, setBatchResult] = useState<SettlementBatchResult | null>(null)
@@ -416,8 +409,6 @@ export function SettlementPage({
         }
       }
       setQuote(nextQuote)
-      setConfirmations(nextQuote.groups.map((group) => ({ payerId: group.payerId, actualAmount: 0, depositorName: '' })))
-      setBatchMemo('')
     } catch (error) {
       window.alert(getErrorMessage(error))
     } finally {
@@ -425,14 +416,10 @@ export function SettlementPage({
     }
   }
 
-  const updateConfirmation = (payerId: string, patch: Partial<SettlementConfirmationInput>) => {
-    setConfirmations((current) => current.map((item) => item.payerId === payerId ? { ...item, ...patch } : item))
-  }
-
-  const quoteIsValid = quote !== null && quote.groups.every((group) => {
-    const confirmation = confirmations.find((item) => item.payerId === group.payerId)
-    return confirmation && confirmation.actualAmount === group.expectedAmount && confirmation.depositorName.trim().length > 0
-  })
+  const quoteIsValid = quote !== null
+    && quote.itemCount > 0
+    && quote.expectedAmount > 0
+    && quote.groups.length > 0
 
   const confirmBatch = async () => {
     if (!quote || !quoteIsValid || batchConfirming) return
@@ -440,7 +427,12 @@ export function SettlementPage({
     try {
       let result: SettlementBatchResult
       if (isSupabaseConfigured) {
-        result = await onConfirmSettlementQuote(quote.id, confirmations, batchMemo)
+        const automaticConfirmations: SettlementConfirmationInput[] = quote.groups.map((group) => ({
+          payerId: group.payerId,
+          actualAmount: group.expectedAmount,
+          depositorName: group.payerUsername || '자동 확인',
+        }))
+        result = await onConfirmSettlementQuote(quote.id, automaticConfirmations, '')
       } else {
         const rows = selectAllFiltered
           ? filteredLocalRows.filter((row) => !row.confirmedAt && row.canConfirm && !excludedRows.has(row.id))
@@ -607,8 +599,8 @@ export function SettlementPage({
       </section>
 
       {batchHistory.length > 0 && <section className="panel compact-panel settlement-batch-history-panel">
-        <div className="panel-header"><div><h2>일괄 입금확인 내역</h2><p>실제 입금자별로 생성된 정산 묶음을 확인합니다.</p></div></div>
-        <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-batch-history-table"><thead><tr><th>묶음번호</th><th>입금자</th><th>건수</th><th>예정금액</th><th>실제금액</th><th>입금자명</th><th>확인시각</th><th>상세</th></tr></thead><tbody>{batchHistory.map((batch) => <tr key={batch.id}><td><strong>{batch.batchNumber}</strong>{batch.memo && <small>{batch.memo}</small>}</td><td>{batch.payerUsername}</td><td>{batch.itemCount.toLocaleString('ko-KR')}건</td><td>{formatWon(batch.expectedAmount)}</td><td><strong>{formatWon(batch.actualAmount)}</strong></td><td>{batch.depositorName}</td><td>{formatDateTime(batch.confirmedAt)}</td><td><button className="secondary-button small" disabled={batchDetailLoadingId === batch.id} onClick={() => void openBatchDetail(batch)}>{batchDetailLoadingId === batch.id ? '조회 중' : '포함 작업'}</button></td></tr>)}</tbody></table></div>
+        <div className="panel-header"><div><h2>일괄 입금확인 내역</h2><p>입금자별로 처리된 정산 묶음을 확인합니다.</p></div></div>
+        <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-batch-history-table"><thead><tr><th>묶음번호</th><th>입금자</th><th>건수</th><th>확인금액</th><th>확인시각</th><th>상세</th></tr></thead><tbody>{batchHistory.map((batch) => <tr key={batch.id}><td><strong>{batch.batchNumber}</strong>{batch.memo && <small>{batch.memo}</small>}</td><td>{batch.payerUsername}</td><td>{batch.itemCount.toLocaleString('ko-KR')}건</td><td><strong>{formatWon(batch.actualAmount)}</strong></td><td>{formatDateTime(batch.confirmedAt)}</td><td><button className="secondary-button small" disabled={batchDetailLoadingId === batch.id} onClick={() => void openBatchDetail(batch)}>{batchDetailLoadingId === batch.id ? '조회 중' : '포함 작업'}</button></td></tr>)}</tbody></table></div>
       </section>}
 
       <section className="panel compact-panel fill-panel settlement-orders-panel"><div className="panel-header"><div><h2>{user.role === 'admin' ? '전체 작업 결제 상태' : '내 작업 결제 상태'}</h2><p>필요한 입금 확인이 모두 끝나면 작업이 입금완료로 변경됩니다.</p></div></div>{visibleOrders.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table"><table className="simple-table settlement-table settlement-orders-table"><thead><tr>{user.role === 'admin' && <th>등록 그룹</th>}<th>상호명</th><th>{user.role === 'admin' ? '관리자 정산액' : '접수금액'}</th><th>시작일</th><th>상태</th></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id}>{user.role === 'admin' && <td>{order.creatorGroupName || '미지정 그룹'}</td>}<td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td><strong>{formatWon(orderSettlementAmount(order))}</strong></td><td>{formatDate(order.startDate)}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}</section>
@@ -618,18 +610,12 @@ export function SettlementPage({
         <div><button className="secondary-button" onClick={clearSelection}>선택 해제</button><button className="primary-button" disabled={quoteLoading} onClick={() => void openBatchQuote()}>{quoteLoading ? '금액 확인 중...' : '일괄 입금확인'}</button></div>
       </div>}
 
-      {quote && <Modal title="일괄 입금확인 최종 점검" description="입금자별 실제 입금액과 예정금액이 일치해야 처리됩니다." onClose={() => { if (!batchConfirming) setQuote(null) }} footer={<><button className="secondary-button" disabled={batchConfirming} onClick={() => setQuote(null)}>취소</button><button className="primary-button" disabled={!quoteIsValid || batchConfirming} onClick={() => void confirmBatch()}>{batchConfirming ? '입금 확인 중...' : `${quote.itemCount.toLocaleString('ko-KR')}건 입금확인`}</button></>}>
-        <div className="settlement-quote-summary"><span>선택 작업</span><strong>{quote.itemCount.toLocaleString('ko-KR')}건</strong><span>총 예정금액</span><strong>{formatWon(quote.expectedAmount)}</strong><small>{formatDateTime(quote.expiresAt)}까지 유효</small></div>
-        <div className="settlement-quote-groups">{quote.groups.map((group) => {
-          const confirmation = confirmations.find((item) => item.payerId === group.payerId) ?? { payerId: group.payerId, actualAmount: 0, depositorName: '' }
-          const difference = confirmation.actualAmount - group.expectedAmount
-          return <article key={group.payerId} className={difference === 0 && confirmation.depositorName.trim() ? 'quote-group-valid' : 'quote-group-invalid'}>
-            <header><div><strong>{group.payerUsername}</strong><span>{group.itemCount.toLocaleString('ko-KR')}건</span></div><strong>{formatWon(group.expectedAmount)}</strong></header>
-            <div className="quote-group-inputs"><label><span>실제 입금액</span><input inputMode="numeric" value={confirmation.actualAmount.toLocaleString('ko-KR')} onChange={(event) => updateConfirmation(group.payerId, { actualAmount: moneyInputValue(event.target.value) })} /></label><label><span>통장 입금자명</span><input value={confirmation.depositorName} onChange={(event) => updateConfirmation(group.payerId, { depositorName: event.target.value })} placeholder="실제 입금자명" /></label></div>
-            <div className="quote-difference"><span>차액</span><strong>{difference === 0 ? '0원 · 일치' : `${difference > 0 ? '+' : ''}${formatWon(difference)}`}</strong></div>
-          </article>
-        })}</div>
-        <label className="settlement-batch-memo"><span>입금 메모</span><textarea maxLength={500} value={batchMemo} onChange={(event) => setBatchMemo(event.target.value)} placeholder="예: 8월 6일 스파크 정산" /></label>
+      {quote && <Modal title="일괄 입금확인" description={`${formatWon(quote.expectedAmount)} 입금을 확인하시겠습니까?`} onClose={() => { if (!batchConfirming) setQuote(null) }} footer={<><button className="secondary-button" disabled={batchConfirming} onClick={() => setQuote(null)}>취소</button><button className="primary-button" disabled={!quoteIsValid || batchConfirming} onClick={() => void confirmBatch()}>{batchConfirming ? '입금 확인 중...' : '입금확인'}</button></>}>
+        <div className="settlement-quote-summary settlement-quote-summary-simple"><span>선택 작업</span><strong>{quote.itemCount.toLocaleString('ko-KR')}건</strong><span>확인 금액</span><strong>{formatWon(quote.expectedAmount)}</strong><small>선택한 작업과 금액이 정확한지 확인해 주세요. 확인 후 다음 정산 단계로 넘어갑니다.</small></div>
+        {quote.groups.length > 1 && <div className="settlement-quote-groups">{quote.groups.map((group) => <article key={group.payerId} className="quote-group-valid quote-group-auto">
+          <header><div><strong>{group.payerUsername}</strong><span>{group.itemCount.toLocaleString('ko-KR')}건</span></div><strong>{formatWon(group.expectedAmount)}</strong></header>
+        </article>)}</div>}
+        <div className="settlement-confirm-warning"><Icon name="check" size={16} /><span>실제 입금이 완료된 내역만 확인해 주세요. 처리 후에는 정산 묶음 내역에 기록됩니다.</span></div>
       </Modal>}
 
       {batchResult && <Modal title="일괄 입금확인 완료" description="입금자별 정산 묶음이 생성되고 선택한 단계가 처리되었습니다." onClose={() => setBatchResult(null)} footer={<button className="primary-button" onClick={() => setBatchResult(null)}>확인</button>}>

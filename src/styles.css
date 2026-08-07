@@ -1872,3 +1872,21 @@ td small { margin-top: 4px; font-size: 10px; }
     width: 100%;
   }
 }
+
+
+/* v9.2.2: simplified settlement confirmation */
+.settlement-quote-groups article.quote-group-auto > header { margin-bottom: 0; }
+.settlement-confirm-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid #d9e4f8;
+  border-radius: 8px;
+  background: #f6f9ff;
+  color: #526078;
+  font-size: 12px;
+  line-height: 1.55;
+}
+.settlement-confirm-warning svg { flex: 0 0 auto; margin-top: 1px; color: #2f6bec; }
