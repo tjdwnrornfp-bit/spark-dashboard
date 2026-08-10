@@ -1890,3 +1890,74 @@ td small { margin-top: 4px; font-size: 10px; }
   line-height: 1.55;
 }
 .settlement-confirm-warning svg { flex: 0 0 auto; margin-top: 1px; color: #2f6bec; }
+
+/* v9.3 operations manager */
+.manager-account-info {
+  min-height: 74px;
+}
+.manager-account-info small {
+  display: block;
+  margin-top: 5px;
+  color: #78849a;
+  font-size: 11px;
+  line-height: 1.45;
+}
+.manager-dashboard-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, .55fr);
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid #dbe5f5;
+  border-radius: 12px;
+  background: #dbe5f5;
+  box-shadow: 0 8px 24px rgba(25, 52, 92, .05);
+}
+.manager-dashboard-hero > div {
+  min-width: 0;
+  padding: 24px 28px;
+  background: #fff;
+}
+.manager-dashboard-hero span,
+.manager-dashboard-code span {
+  display: block;
+  margin-bottom: 7px;
+  color: #758199;
+  font-size: 12px;
+  font-weight: 700;
+}
+.manager-dashboard-hero strong {
+  color: #10213c;
+  font-size: 30px;
+  line-height: 1.15;
+}
+.manager-dashboard-hero strong small {
+  margin-left: 4px;
+  font-size: 13px;
+}
+.manager-dashboard-hero p,
+.manager-dashboard-hero small {
+  display: block;
+  margin-top: 8px;
+  color: #8792a5;
+  font-size: 11px;
+}
+.manager-dashboard-code strong {
+  font-size: 19px;
+  letter-spacing: .02em;
+  word-break: break-all;
+}
+.manager-member-stats article strong {
+  font-size: clamp(18px, 1.8vw, 25px);
+}
+.manager-direct-settlement {
+  margin-top: 14px;
+}
+.manager-permission-card .myinfo-info-tiles dd {
+  word-break: keep-all;
+}
+
+@media (max-width: 900px) {
+  .manager-dashboard-hero {
+    grid-template-columns: 1fr;
+  }
+}

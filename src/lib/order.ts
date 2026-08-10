@@ -36,7 +36,7 @@ function nextSequence(orders: Order[], datePart: string, prefix: string): number
 
 export function createOrder(user: User, draft: OrderDraft, settings: AppSettings, existing: Order[], now = new Date()): Order {
   const unitPrice = getUserProgramPrice(user, draft.programType)
-  if (user.role === 'admin' || user.role === null || user.approvalStatus !== 'approved' || unitPrice <= 0) {
+  if (user.isOperationsManager || user.role === 'admin' || user.role === null || user.approvalStatus !== 'approved' || unitPrice <= 0) {
     throw new Error(`${labelForProgram(draft.programType)} 단가가 설정된 승인 회원만 작업을 접수할 수 있습니다.`)
   }
   const validation = validateDraft(draft, now)

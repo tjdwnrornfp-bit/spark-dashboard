@@ -61,6 +61,9 @@ export function mapProfile(row: Record<string, unknown>): User {
     updatedAt: stringValue(row.updated_at),
     sponsorId: nullableString(row.sponsor_id),
     sponsorUsername: nullableString(row.sponsor_username),
+    isOperationsManager: Boolean(row.is_operations_manager),
+    managerId: nullableString(row.manager_id),
+    managerUsername: nullableString(row.manager_username),
     referralCode: stringValue(row.referral_code),
     groupName: stringValue(row.group_name),
     hierarchyDepth: numberValue(row.hierarchy_depth),
@@ -342,9 +345,10 @@ export async function restoreRemoteOrder(order: Order, reason: string): Promise<
 
 export async function reviewRemoteMember(params: Omit<MemberReviewInput, 'member'> & { memberId: string; memberUpdatedAt: string }): Promise<User> {
   const client = requiredClient()
-  const { data, error } = await client.rpc('review_member_v9', {
+  const { data, error } = await client.rpc('review_member_v93', {
     p_member_id: params.memberId,
-    p_role: params.role,
+    p_role: params.role === 'manager' ? 'agency' : params.role,
+    p_is_operations_manager: params.role === 'manager',
     p_spark_price_per_shot: params.prices.spark,
     p_spark_plus_price_per_shot: params.prices.spark_plus,
     p_spark_s_price_per_shot: params.prices.spark_s,

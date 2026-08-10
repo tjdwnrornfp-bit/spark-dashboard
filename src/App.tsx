@@ -55,7 +55,7 @@ function errorMessage(error: unknown, fallback: string): string {
   if (/user already registered|duplicate key|profiles_username_key_key|이미 사용 중/i.test(message)) return '이미 사용 중이거나 가입 신청된 아이디입니다.'
   if (/password/i.test(message) && /short|weak|length/i.test(message)) return '서버 비밀번호 정책에 맞지 않습니다. Supabase 비밀번호 최소 길이 설정을 확인해 주세요.'
   if (/database error saving new user|unexpected_failure|handle_new_auth_user/i.test(message)) {
-    return '회원가입 데이터베이스 연결에 문제가 있습니다. Supabase에서 supabase/maintenance/repair_signup_v8.sql을 실행해 주세요.'
+    return '회원가입 데이터베이스 연결에 문제가 있습니다. Supabase에서 supabase/update_v9_3_operations_manager.sql 적용 여부를 확인해 주세요.'
   }
   if (!message || message === '{}' || message === '[object Object]') return fallback
   return message
@@ -144,6 +144,10 @@ export default function App() {
   }, [remoteUser])
 
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 5_000); return () => window.clearInterval(timer) }, [])
+
+  useEffect(() => {
+    if (user?.isOperationsManager && !(['dashboard', 'notifications', 'members', 'myinfo', 'notices'] as Page[]).includes(page)) setPage('dashboard')
+  }, [page, user?.isOperationsManager])
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return
@@ -239,15 +243,17 @@ export default function App() {
       } catch (error) { return { ok: false, message: errorMessage(error, '가입 신청을 처리하지 못했습니다.') } }
     }
     if (localMembers.some((member) => normalizeUsername(member.username) === normalizeUsername(username))) return { ok: false, message: '이미 사용 중이거나 가입 신청된 아이디입니다.' }
-    const sponsor = referral ? localMembers.find((member) => member.active && member.approvalStatus === 'approved' && member.role !== 'admin' && [normalizeUsername(member.username), normalizeUsername(member.referralCode)].includes(normalizeUsername(referral))) : null
-    if (referral && !sponsor) return { ok: false, message: '유효한 추천인 아이디 또는 코드를 찾을 수 없습니다.' }
+    const referralOwner = referral ? localMembers.find((member) => member.active && member.approvalStatus === 'approved' && member.role !== 'admin' && [normalizeUsername(member.username), normalizeUsername(member.referralCode)].includes(normalizeUsername(referral))) : null
+    if (referral && !referralOwner) return { ok: false, message: '유효한 추천 또는 관리 코드를 찾을 수 없습니다.' }
+    const manager = referralOwner?.isOperationsManager ? referralOwner : null
+    const sponsor = referralOwner && !referralOwner.isOperationsManager ? referralOwner : null
     const nowIso = new Date().toISOString()
     const id = crypto.randomUUID()
     const member: User = {
       id,
       username,
       passwordHash: await hashPassword(draft.password),
-      role: sponsor ? 'agency' : null,
+      role: referralOwner ? 'agency' : null,
       approvalStatus: 'pending',
       pricePerShot: 0,
       sparkPricePerShot: 0,
@@ -259,8 +265,11 @@ export default function App() {
       updatedAt: nowIso,
       sponsorId: sponsor?.id ?? null,
       sponsorUsername: sponsor?.username ?? null,
+      isOperationsManager: false,
+      managerId: manager?.id ?? null,
+      managerUsername: manager?.username ?? null,
       referralCode: makeReferralCode(id),
-      groupName: sponsor?.groupName ?? '',
+      groupName: referralOwner?.groupName ?? '',
       hierarchyDepth: sponsor ? sponsor.hierarchyDepth + 1 : 0,
       bank: '',
       accountNumber: '',
@@ -269,8 +278,8 @@ export default function App() {
     setLocalMembers((current) => [member, ...current])
     const admin = localMembers.find((item) => item.role === 'admin')
     setLocalNotifications((current) => [
-      ...(sponsor ? [{ id: crypto.randomUUID(), createdAt: nowIso, userId: sponsor.id, role: sponsor.role ?? 'agency', title: '하위 대행사 승인 요청', message: `${username} 회원이 추천 코드를 사용해 가입했습니다.`, read: false } as NotificationItem] : []),
-      ...(admin ? [{ id: crypto.randomUUID(), createdAt: nowIso, userId: admin.id, role: 'admin', title: '회원가입 신청', message: sponsor ? `${username} 회원이 ${sponsor.username} 추천으로 가입했습니다.` : `${username} 회원의 가입 승인이 필요합니다.`, read: false } as NotificationItem] : []),
+      ...(referralOwner ? [{ id: crypto.randomUUID(), createdAt: nowIso, userId: referralOwner.id, role: referralOwner.role ?? 'agency', title: manager ? '관리 대행사 승인 요청' : '하위 대행사 승인 요청', message: `${username} 회원의 가입 승인이 필요합니다.`, read: false } as NotificationItem] : []),
+      ...(admin ? [{ id: crypto.randomUUID(), createdAt: nowIso, userId: admin.id, role: 'admin', title: manager ? '중간관리자 배정 가입' : '회원가입 신청', message: manager ? `${username} 회원이 ${manager.username} 중간관리자 코드로 가입했습니다.` : sponsor ? `${username} 회원이 ${sponsor.username} 추천으로 가입했습니다.` : `${username} 회원의 가입 승인이 필요합니다.`, read: false } as NotificationItem] : []),
       ...current,
     ])
     return { ok: true, message: '가입 신청이 완료되었습니다. 승인 후 로그인할 수 있습니다.' }
@@ -278,6 +287,7 @@ export default function App() {
 
   const handleCreateOrder = async (draft: OrderDraft): Promise<Order> => {
     if (!user) throw new Error('로그인이 필요합니다.')
+    if (user.isOperationsManager) throw new Error('중간관리자 계정은 작업을 접수할 수 없습니다.')
     if (isSupabaseConfigured) {
       const order = await createRemoteOrder({ programType: draft.programType, placeUrl: draft.placeUrl.trim(), mid: extractMid(draft.placeUrl), storeName: draft.storeName.trim(), keyword: draft.keyword.trim(), dailyShots: Number(draft.dailyShots), operationDays: Number(draft.operationDays), startDate: draft.startDate, memo: draft.memo.trim() })
       setRemoteOrders((current) => [...current.filter((item) => item.dbId !== order.dbId), order])
@@ -298,6 +308,7 @@ export default function App() {
 
   const handleCreateOrdersBulk = async (drafts: OrderDraft[]): Promise<Order[]> => {
     if (!user) throw new Error('로그인이 필요합니다.')
+    if (user.isOperationsManager) throw new Error('중간관리자 계정은 작업을 접수할 수 없습니다.')
     if (isSupabaseConfigured) {
       const created = await createRemoteOrdersBulk(drafts)
       setRemoteOrders((current) => {
@@ -370,27 +381,36 @@ export default function App() {
       return
     }
     const target = params.member
-    if (user.role !== 'admin' && target.sponsorId !== user.id) throw new Error('직접 추천한 회원만 관리할 수 있습니다.')
-    if (user.role !== 'admin' && params.approvalStatus === 'approved') {
+    const actorIsAdmin = user.role === 'admin'
+    const actorIsManager = user.isOperationsManager
+    if (!actorIsAdmin) {
+      const allowed = actorIsManager ? target.managerId === user.id : target.sponsorId === user.id
+      if (!allowed) throw new Error(actorIsManager ? '내 관리 코드로 가입한 대행사만 관리할 수 있습니다.' : '직접 추천한 회원만 관리할 수 있습니다.')
+    }
+    if (!actorIsAdmin && !actorIsManager && params.approvalStatus === 'approved') {
       const myPrices = getProgramPriceMap(user)
       if (params.prices.spark <= myPrices.spark || params.prices.spark_plus <= myPrices.spark_plus || params.prices.spark_s <= myPrices.spark_s) throw new Error('하위 회원의 각 프로그램 단가는 내 단가보다 높아야 합니다.')
     }
+    const makeManager = actorIsAdmin && !target.sponsorId && !target.managerId && params.role === 'manager'
     const nowIso = new Date().toISOString()
+    const nextPrices = makeManager ? { spark: 1, spark_plus: 1, spark_s: 1 } : params.approvalStatus === 'approved' ? params.prices : getProgramPriceMap(target)
     const updated: User = applyProgramPrices({
       ...target,
-      role: target.sponsorId ? 'agency' : params.role,
-      groupName: target.sponsorId ? (localMembers.find((member) => member.id === target.sponsorId)?.groupName ?? target.groupName) : params.groupName,
+      role: target.sponsorId || target.managerId ? 'agency' : makeManager ? 'agency' : params.role === 'manager' ? 'agency' : params.role,
+      isOperationsManager: makeManager,
+      groupName: target.sponsorId ? (localMembers.find((member) => member.id === target.sponsorId)?.groupName ?? target.groupName) : actorIsManager ? target.groupName : params.groupName,
       approvalStatus: params.approvalStatus,
       active: params.approvalStatus === 'approved',
       approvedAt: params.approvalStatus === 'approved' ? target.approvedAt ?? nowIso : target.approvedAt,
       updatedAt: nowIso,
-    }, params.approvalStatus === 'approved' ? params.prices : getProgramPriceMap(target))
+    }, nextPrices)
     setLocalMembers((current) => current.map((member) => member.id === target.id ? updated : member))
-    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: nowIso, userId: target.id, role: 'all', title: params.approvalStatus === 'approved' ? '회원가입 승인 완료' : '회원가입 반려', message: params.approvalStatus === 'approved' ? `승인되었습니다. 스파크 ${params.prices.spark}원 / 스파크+ ${params.prices.spark_plus}원 / 스파크S ${params.prices.spark_s}원입니다.` : '회원가입 신청이 반려되었습니다.', read: false }, ...current])
+    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: nowIso, userId: target.id, role: 'all', title: params.approvalStatus === 'approved' ? '회원가입 승인 완료' : '회원가입 반려', message: params.approvalStatus !== 'approved' ? '회원가입 신청이 반려되었습니다.' : makeManager ? '중간관리자 계정으로 승인되었습니다. 관리 코드로 가입한 대행사를 승인하고 단가를 지정할 수 있습니다.' : `승인되었습니다. 스파크 ${params.prices.spark}원 / 스파크+ ${params.prices.spark_plus}원 / 스파크S ${params.prices.spark_s}원입니다.`, read: false }, ...current])
   }
 
   const handleAccountChange = async (account: AccountDraft) => {
     if (!user) throw new Error('로그인이 필요합니다.')
+    if (user.isOperationsManager) throw new Error('중간관리자 계정은 별도 정산 계좌를 사용하지 않습니다.')
     if (isSupabaseConfigured) {
       const updated = await saveRemoteAccount(account)
       setRemoteUser(updated)
@@ -466,10 +486,10 @@ export default function App() {
 
   return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={setPage} onLogout={() => { setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
-    {page === 'dashboard' && <DashboardPage user={user} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
+    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {activeProgram && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
-    {page === 'settlement' && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
+    {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
+    {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}

@@ -3,7 +3,7 @@ import { Icon } from '../components/Icon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
 import type { Notice, Order, Page, PaymentStep, User } from '../domain/types'
-import { formatDate, daysRemaining } from '../lib/date'
+import { formatDate, formatDateTime, daysRemaining } from '../lib/date'
 import { formatWon } from '../lib/money'
 import { PROGRAMS, programOrders } from '../lib/program'
 
@@ -12,8 +12,9 @@ function adminRegistrantLabel(order: Order): string {
   return order.sponsorId ? `${group} 하위` : group
 }
 
-export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavigate }: {
+export function DashboardPage({ user, members, orders, paymentSteps, notices, now, onNavigate }: {
   user: User
+  members: User[]
   orders: Order[]
   paymentSteps: PaymentStep[]
   notices: Notice[]
@@ -54,6 +55,34 @@ export function DashboardPage({ user, orders, paymentSteps, notices, now, onNavi
       expired: list.filter((order) => order.status === '만료').length,
     }
   })
+
+  if (user.isOperationsManager) {
+    const managed = members.filter((member) => member.managerId === user.id)
+    const pendingMembers = managed.filter((member) => member.approvalStatus === 'pending')
+    const approvedMembers = managed.filter((member) => member.approvalStatus === 'approved')
+    const rejectedMembers = managed.filter((member) => member.approvalStatus === 'rejected')
+    const recentManaged = [...managed].sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)).slice(0, 8)
+    return (
+      <div className="page-stack dashboard-page-stack manager-dashboard-stack">
+        <PageHeader title="대시보드" subtitle={`${user.username} 중간관리자 계정의 회원 승인 현황입니다.`} />
+        {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
+        <section className="manager-dashboard-hero">
+          <div><span>관리 대행사</span><strong>{managed.length.toLocaleString('ko-KR')}<small>명</small></strong><p>내 관리 코드로 가입한 대행사만 표시됩니다.</p></div>
+          <div className="manager-dashboard-code"><span>관리 코드</span><strong>{user.referralCode || user.username}</strong><small>정산은 관리자 계좌로 직접 연결</small></div>
+        </section>
+        <section className="mini-stat-grid payment-stat-grid agency-payment-grid manager-member-stats">
+          <MiniStat label="승인 대기" value={`${pendingMembers.length.toLocaleString('ko-KR')}명`} />
+          <MiniStat label="승인 완료" value={`${approvedMembers.length.toLocaleString('ko-KR')}명`} />
+          <MiniStat label="반려" value={`${rejectedMembers.length.toLocaleString('ko-KR')}명`} />
+          <MiniStat label="정산 경로" value="관리자 직결" />
+        </section>
+        <section className="panel compact-panel manager-dashboard-members">
+          <div className="panel-header"><div><h2>최근 가입 대행사</h2><p>승인과 프로그램별 단가는 회원관리에서 처리합니다.</p></div><button className="text-button" onClick={() => onNavigate('members')}>회원관리 <Icon name="chevron" /></button></div>
+          {recentManaged.length === 0 ? <EmptyState text="관리 코드로 가입한 대행사가 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>아이디</th><th>가입일</th><th>상태</th></tr></thead><tbody>{recentManaged.map((member) => <tr key={member.id}><td><strong>{member.username}</strong></td><td>{formatDateTime(member.requestedAt)}</td><td><span>{member.approvalStatus === 'approved' ? '승인' : member.approvalStatus === 'rejected' ? '반려' : '승인대기'}</span></td></tr>)}</tbody></table></div>}
+        </section>
+      </div>
+    )
+  }
 
   if (user.role !== 'admin') {
     return (

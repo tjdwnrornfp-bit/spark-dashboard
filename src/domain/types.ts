@@ -1,5 +1,5 @@
 export type Role = 'admin' | 'agency' | 'distributor'
-export type MemberRole = Exclude<Role, 'admin'>
+export type MemberRole = 'agency' | 'distributor' | 'manager'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
 export type ProgramType = 'spark' | 'spark_plus' | 'spark_s'
@@ -27,6 +27,9 @@ export interface User {
   updatedAt: string
   sponsorId: string | null
   sponsorUsername: string | null
+  isOperationsManager: boolean
+  managerId: string | null
+  managerUsername: string | null
   referralCode: string
   groupName: string
   hierarchyDepth: number

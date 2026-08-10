@@ -17,6 +17,8 @@ const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType
   { page: 'notices', label: '공지사항', icon: 'notice' },
 ]
 
+const MANAGER_PAGES = new Set<Page>(['dashboard', 'notifications', 'members', 'myinfo', 'notices'])
+
 export function AppShell({ user, page, unreadCount, serverMode, children, onNavigate, onLogout }: {
   user: User
   page: Page
@@ -27,12 +29,18 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
   onLogout: () => void
 }) {
   const [mobileOpen, setMobileOpen] = useState(false)
-  const roleLabel = user.role === 'admin' ? '관리자' : user.role === 'distributor' ? '총판' : '대행사'
+  const roleLabel = user.isOperationsManager ? '중간관리자' : user.role === 'admin' ? '관리자' : user.role === 'distributor' ? '총판' : '대행사'
 
   const navigate = (next: Page) => {
     onNavigate(next)
     setMobileOpen(false)
   }
+
+  const navItems = NAV_ITEMS.filter((item) => {
+    if (user.isOperationsManager) return MANAGER_PAGES.has(item.page)
+    if (item.page === 'operations') return user.role === 'admin'
+    return true
+  })
 
   return (
     <div className="app-layout">
@@ -41,7 +49,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
       <aside className={`sidebar ${mobileOpen ? 'sidebar-open' : ''}`}>
         <div className="sidebar-logo"><Logo /></div>
         <nav>
-          {NAV_ITEMS.filter((item) => item.page !== 'operations' || user.role === 'admin').map((item) => {
+          {navItems.map((item) => {
             const badge = item.page === 'notifications' ? unreadCount : 0
             return (
               <button key={item.page} className={page === item.page ? 'nav-active' : ''} onClick={() => navigate(item.page)}>

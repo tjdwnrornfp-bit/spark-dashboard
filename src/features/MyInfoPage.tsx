@@ -28,7 +28,8 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
   const [savingPassword, setSavingPassword] = useState(false)
   const [savingAccount, setSavingAccount] = useState(false)
   const prices = getProgramPriceMap(user)
-  const roleLabel = user.role === 'admin' ? '관리자' : user.role === 'distributor' ? '총판' : '대행사'
+  const isManager = user.isOperationsManager
+  const roleLabel = isManager ? '중간관리자' : user.role === 'admin' ? '관리자' : user.role === 'distributor' ? '총판' : '대행사'
 
   const copyReferralCode = async () => {
     if (!user.referralCode) return
@@ -72,7 +73,7 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
 
   return (
     <div className="page-stack myinfo-page-stack">
-      <PageHeader title="내 정보" subtitle="계정과 프로그램별 단가, 정산 정보를 한곳에서 확인합니다." />
+      <PageHeader title="내 정보" subtitle={isManager ? '중간관리자 권한과 관리 코드를 확인합니다.' : '계정과 프로그램별 단가, 정산 정보를 한곳에서 확인합니다.'} />
 
       <section className="myinfo-hero">
         <div className="myinfo-identity">
@@ -80,19 +81,19 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
           <div>
             <span className="myinfo-eyebrow">MY ACCOUNT</span>
             <div className="myinfo-name-line"><h2>{user.username}</h2><span className="myinfo-role-badge">{roleLabel}</span><span className="myinfo-active-badge">사용중</span></div>
-            <p>{user.role === 'admin' ? 'SPARK 관리자 계정' : 'SPARK 작업 관리 계정'}</p>
+            <p>{user.role === 'admin' ? 'SPARK 관리자 계정' : isManager ? 'SPARK 중간관리자 계정' : 'SPARK 작업 관리 계정'}</p>
           </div>
         </div>
         {user.role !== 'admin' && (
           <div className="myinfo-referral-card">
-            <span>추천 코드</span>
+            <span>{isManager ? '관리 코드' : '추천 코드'}</span>
             <strong>{user.referralCode || user.username}</strong>
             <button className="myinfo-copy-button" onClick={() => void copyReferralCode()}><Icon name={copied ? 'check' : 'copy'} size={15} />{copied ? '복사됨' : '코드 복사'}</button>
           </div>
         )}
       </section>
 
-      {user.role !== 'admin' && (
+      {user.role !== 'admin' && !isManager && (
         <section className="panel myinfo-program-panel">
           <div className="panel-header"><div><h2>프로그램별 단가</h2><p>접수 시점의 단가가 주문과 정산 내역에 고정됩니다.</p></div></div>
           <div className="myinfo-price-grid">
@@ -113,28 +114,43 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
       )}
 
       <section className="myinfo-detail-grid">
-        <section className="panel myinfo-detail-card">
-          <div className="myinfo-detail-header">
-            <div className="myinfo-section-icon"><Icon name="wallet" size={20} /></div>
-            <div><h2>정산 계좌</h2><p>하위 대행사에게 표시되는 입금 계좌입니다.</p></div>
-            <button className="secondary-button small" onClick={() => { setAccount({ bank: user.bank, accountNumber: user.accountNumber, accountHolder: user.accountHolder }); setAccountOpen((value) => !value) }}>{accountOpen ? '닫기' : '계좌 수정'}</button>
-          </div>
-          <dl className="myinfo-info-tiles">
-            <div><dt>은행</dt><dd>{user.bank || '미등록'}</dd></div>
-            <div><dt>계좌번호</dt><dd>{user.accountNumber || '미등록'}</dd></div>
-            <div><dt>예금주</dt><dd>{user.accountHolder || '미등록'}</dd></div>
-          </dl>
-          {accountOpen && (
-            <div className="myinfo-inline-editor">
-              <div className="myinfo-editor-grid">
-                <label><span>은행</span><input value={account.bank} onChange={(event) => setAccount((current) => ({ ...current, bank: event.target.value }))} placeholder="은행명" /></label>
-                <label><span>계좌번호</span><input value={account.accountNumber} onChange={(event) => setAccount((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="계좌번호" /></label>
-                <label><span>예금주</span><input value={account.accountHolder} onChange={(event) => setAccount((current) => ({ ...current, accountHolder: event.target.value }))} placeholder="예금주" /></label>
-              </div>
-              <div className="myinfo-editor-actions"><button className="secondary-button" onClick={() => setAccountOpen(false)}>취소</button><button className="primary-button" disabled={savingAccount} onClick={() => void saveAccount()}>{savingAccount ? '저장 중...' : '계좌 저장'}</button></div>
+        {isManager ? (
+          <section className="panel myinfo-detail-card manager-permission-card">
+            <div className="myinfo-detail-header">
+              <div className="myinfo-section-icon"><Icon name="users" size={20} /></div>
+              <div><h2>중간관리자 권한</h2><p>내 관리 코드로 가입한 대행사만 승인하고 단가를 지정할 수 있습니다.</p></div>
             </div>
-          )}
-        </section>
+            <dl className="myinfo-info-tiles">
+              <div><dt>회원 승인</dt><dd>가능</dd></div>
+              <div><dt>단가 지정</dt><dd>가능</dd></div>
+              <div><dt>정산 경로</dt><dd>관리자 직결</dd></div>
+            </dl>
+            <div className="myinfo-security-state manager-direct-settlement"><span className="myinfo-security-dot" /><div><strong>중간관리자 계좌는 정산에 사용되지 않습니다.</strong><p>관리 대행사에는 관리자 입금 계좌가 표시되고, 정산 단계도 관리자에게 직접 생성됩니다.</p></div></div>
+          </section>
+        ) : (
+          <section className="panel myinfo-detail-card">
+            <div className="myinfo-detail-header">
+              <div className="myinfo-section-icon"><Icon name="wallet" size={20} /></div>
+              <div><h2>정산 계좌</h2><p>{user.role === 'admin' ? '관리자 정산 계좌입니다.' : '하위 대행사에게 표시되는 입금 계좌입니다.'}</p></div>
+              {user.role !== 'admin' && <button className="secondary-button small" onClick={() => { setAccount({ bank: user.bank, accountNumber: user.accountNumber, accountHolder: user.accountHolder }); setAccountOpen((value) => !value) }}>{accountOpen ? '닫기' : '계좌 수정'}</button>}
+            </div>
+            <dl className="myinfo-info-tiles">
+              <div><dt>은행</dt><dd>{user.bank || '미등록'}</dd></div>
+              <div><dt>계좌번호</dt><dd>{user.accountNumber || '미등록'}</dd></div>
+              <div><dt>예금주</dt><dd>{user.accountHolder || '미등록'}</dd></div>
+            </dl>
+            {accountOpen && user.role !== 'admin' && (
+              <div className="myinfo-inline-editor">
+                <div className="myinfo-editor-grid">
+                  <label><span>은행</span><input value={account.bank} onChange={(event) => setAccount((current) => ({ ...current, bank: event.target.value }))} placeholder="은행명" /></label>
+                  <label><span>계좌번호</span><input value={account.accountNumber} onChange={(event) => setAccount((current) => ({ ...current, accountNumber: event.target.value }))} placeholder="계좌번호" /></label>
+                  <label><span>예금주</span><input value={account.accountHolder} onChange={(event) => setAccount((current) => ({ ...current, accountHolder: event.target.value }))} placeholder="예금주" /></label>
+                </div>
+                <div className="myinfo-editor-actions"><button className="secondary-button" onClick={() => setAccountOpen(false)}>취소</button><button className="primary-button" disabled={savingAccount} onClick={() => void saveAccount()}>{savingAccount ? '저장 중...' : '계좌 저장'}</button></div>
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="panel myinfo-detail-card">
           <div className="myinfo-detail-header">
