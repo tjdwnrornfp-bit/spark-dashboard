@@ -74,6 +74,26 @@ function excelDate(value: unknown): string {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
+function excelDisplayWidth(value: string | number | null | undefined): number {
+  const text = String(value ?? '')
+  return Array.from(text).reduce((width, char) => width + (/[^\x00-\xff]/.test(char) ? 2 : 1), 0)
+}
+
+function autoFitExcelColumns(rows: Array<Array<string | number>>, options?: {
+  minWidths?: number[]
+  maxWidths?: number[]
+  padding?: number
+}) {
+  const columnCount = Math.max(0, ...rows.map((row) => row.length))
+  const padding = options?.padding ?? 2
+  return Array.from({ length: columnCount }, (_, columnIndex) => {
+    const contentWidth = Math.max(0, ...rows.map((row) => excelDisplayWidth(row[columnIndex]))) + padding
+    const minWidth = options?.minWidths?.[columnIndex] ?? 8
+    const maxWidth = options?.maxWidths?.[columnIndex] ?? 32
+    return { wch: Math.max(minWidth, Math.min(maxWidth, Math.ceil(contentWidth))) }
+  })
+}
+
 export function OrdersPage({ user, orders, settings, now, programType, onCreateOrder, onCreateOrdersBulk, onStatusChange, onArchiveOrder, onRestoreOrder }: {
   user: User
   orders: Order[]
@@ -209,21 +229,53 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   const downloadExcel = () => {
     const target = sourceOrders.filter((order) => selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     if (target.length === 0) return window.alert('다운로드할 작업을 선택해 주세요.')
+    const unitPriceHeader = `적용단가(원/${quantityUnit})`
     const rows: Array<Array<string | number>> = [
-      ['등록자', '상호명', '대표키워드', '플레이스URL', 'MID값', '일일수량', '구동일수', '시작일', '종료일', '상태'],
-      ...target.map((order) => [order.creatorUsername, order.storeName, order.keyword, order.placeUrl, order.mid, order.dailyShots, order.operationDays, order.startDate, order.endDate, order.status]),
+      ['등록자', '그룹명', '프로그램', unitPriceHeader, '상호명', '대표키워드', '플레이스URL', 'MID값', '일일수량', '구동일수', '시작일', '종료일', '상태'],
+      ...target.map((order) => [
+        order.creatorUsername,
+        order.creatorGroupName || '-',
+        labelForProgram(order.programType ?? 'spark'),
+        order.pricePerShot,
+        order.storeName,
+        order.keyword,
+        order.placeUrl,
+        order.mid,
+        order.dailyShots,
+        order.operationDays,
+        order.startDate,
+        order.endDate,
+        order.status,
+      ]),
     ]
     const worksheet = utils.aoa_to_sheet(rows)
-    worksheet['!cols'] = [{ wch: 18 }, { wch: 30 }, { wch: 30 }, { wch: 70 }, { wch: 22 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 16 }, { wch: 14 }]
-    worksheet['!autofilter'] = { ref: `A1:J${rows.length}` }
+    worksheet['!cols'] = autoFitExcelColumns(rows, {
+      minWidths: [10, 10, 9, 12, 12, 12, 24, 12, 10, 10, 12, 12, 10],
+      maxWidths: [18, 20, 14, 16, 26, 28, 42, 24, 14, 12, 14, 14, 12],
+    })
+    worksheet['!autofilter'] = { ref: `A1:M${rows.length}` }
+    if (rows.length > 1) {
+      for (let rowIndex = 2; rowIndex <= rows.length; rowIndex += 1) {
+        const priceCell = worksheet[`D${rowIndex}`]
+        const quantityCell = worksheet[`I${rowIndex}`]
+        const daysCell = worksheet[`J${rowIndex}`]
+        if (priceCell) priceCell.z = '#,##0\"원\"'
+        if (quantityCell) quantityCell.z = '#,##0'
+        if (daysCell) daysCell.z = '0'
+      }
+    }
     const workbook = utils.book_new()
     utils.book_append_sheet(workbook, worksheet, meta.sheetName)
     writeFileXLSX(workbook, `${meta.orderPrefix.toLowerCase()}-orders-${todayInSeoul(now)}.xlsx`, { compression: true, cellStyles: true })
   }
 
   const downloadBulkTemplate = () => {
-    const worksheet = utils.aoa_to_sheet([BULK_HEADERS])
-    worksheet['!cols'] = [{ wch: 30 }, { wch: 30 }, { wch: 70 }, { wch: 14 }, { wch: 14 }, { wch: 16 }, { wch: 40 }]
+    const templateRows: Array<Array<string | number>> = [BULK_HEADERS]
+    const worksheet = utils.aoa_to_sheet(templateRows)
+    worksheet['!cols'] = autoFitExcelColumns(templateRows, {
+      minWidths: [16, 16, 28, 10, 10, 12, 20],
+      maxWidths: [22, 24, 38, 12, 12, 14, 28],
+    })
     const workbook = utils.book_new()
     utils.book_append_sheet(workbook, worksheet, '대량접수')
     writeFileXLSX(workbook, `${meta.orderPrefix.toLowerCase()}-bulk-order-template.xlsx`, { compression: true })
