@@ -259,7 +259,7 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
         const priceCell = worksheet[`D${rowIndex}`]
         const quantityCell = worksheet[`I${rowIndex}`]
         const daysCell = worksheet[`J${rowIndex}`]
-        if (priceCell) priceCell.z = '#,##0\"원\"'
+        if (priceCell) priceCell.z = '#,##0'
         if (quantityCell) quantityCell.z = '#,##0'
         if (daysCell) daysCell.z = '0'
       }
