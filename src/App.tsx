@@ -32,7 +32,7 @@ import {
   saveRemoteSettings,
   setRemoteOrderStatus,
 } from './lib/backend'
-import { hashPassword, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail } from './lib/auth'
+import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail } from './lib/auth'
 import { calculateAmount } from './lib/money'
 import { applyScheduledTransitions, createOrder, extractMid, transitionOrder } from './lib/order'
 import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, PROGRAM_PAGE_MAP } from './lib/program'
@@ -127,7 +127,7 @@ export default function App() {
   const refreshRemote = useCallback(async () => {
     if (!isSupabaseConfigured || !remoteUser) return
     try {
-      const snapshot = await fetchRemoteSnapshot()
+      const snapshot = await fetchRemoteSnapshot(remoteUser.role === 'admin')
       setRemoteMembers(snapshot.members)
       setRemoteOrders(snapshot.orders)
       setRemotePaymentSteps(snapshot.paymentSteps)
@@ -236,7 +236,18 @@ export default function App() {
     const referral = draft.referralCode.normalize('NFKC').trim()
     if (isSupabaseConfigured && supabase) {
       try {
-        const { error } = await supabase.auth.signUp({ email: await usernameToAuthEmail(username), password: await passwordToAuthSecret(draft.password), options: { data: { username, username_key: normalizeUsername(username), referral_code: referral } } })
+        const { error } = await supabase.auth.signUp({
+          email: await usernameToAuthEmail(username),
+          password: await passwordToAuthSecret(draft.password),
+          options: {
+            data: {
+              username,
+              username_key: normalizeUsername(username),
+              phone_number: normalizePhoneNumber(draft.phoneNumber),
+              referral_code: referral,
+            },
+          },
+        })
         if (error) throw error
         await supabase.auth.signOut()
         return { ok: true, message: '가입 신청이 완료되었습니다. 승인 후 로그인할 수 있습니다.' }
@@ -252,6 +263,7 @@ export default function App() {
     const member: User = {
       id,
       username,
+      phoneNumber: normalizePhoneNumber(draft.phoneNumber),
       passwordHash: await hashPassword(draft.password),
       role: referralOwner ? 'agency' : null,
       approvalStatus: 'pending',

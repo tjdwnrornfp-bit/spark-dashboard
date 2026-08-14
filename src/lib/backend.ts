@@ -49,6 +49,7 @@ export function mapProfile(row: Record<string, unknown>): User {
   return {
     id: stringValue(row.id),
     username: stringValue(row.username),
+    phoneNumber: stringValue(row.phone_number),
     role: (row.role as User['role']) ?? null,
     approvalStatus: (row.approval_status as User['approvalStatus']) ?? 'pending',
     pricePerShot: sparkPrice,
@@ -216,7 +217,7 @@ export async function fetchProfile(userId: string): Promise<User | null> {
   return data ? mapProfile(data as Record<string, unknown>) : null
 }
 
-export async function fetchRemoteSnapshot(): Promise<{
+export async function fetchRemoteSnapshot(includeAdminContacts = false): Promise<{
   members: User[]
   orders: Order[]
   paymentSteps: PaymentStep[]
@@ -226,7 +227,10 @@ export async function fetchRemoteSnapshot(): Promise<{
   settings: AppSettings
 }> {
   const client = requiredClient()
-  const [profilesResult, ordersResult, activeStepsResult, accountResult, notificationsResult, noticesResult, settingsResult] = await Promise.all([
+  const contactsPromise = includeAdminContacts
+    ? client.rpc('get_admin_member_contacts_v94')
+    : Promise.resolve({ data: [], error: null })
+  const [profilesResult, ordersResult, activeStepsResult, accountResult, notificationsResult, noticesResult, settingsResult, contactsResult] = await Promise.all([
     client.from('profiles').select('*').order('requested_at', { ascending: false }),
     client.from('orders').select('*').order('created_at', { ascending: true }),
     client.rpc('get_my_active_payment_steps_v91'),
@@ -234,6 +238,7 @@ export async function fetchRemoteSnapshot(): Promise<{
     client.from('notifications').select('*, orders(order_number)').order('created_at', { ascending: false }),
     client.from('notices').select('*').order('created_at', { ascending: false }),
     client.from('app_settings').select('*').eq('id', true).single(),
+    contactsPromise,
   ])
 
   let stepsResult = activeStepsResult
@@ -241,7 +246,7 @@ export async function fetchRemoteSnapshot(): Promise<{
     stepsResult = await client.from('payment_steps').select('*').order('created_at', { ascending: true }).order('step_order', { ascending: true })
   }
 
-  const firstError = [profilesResult, ordersResult, stepsResult, accountResult, notificationsResult, noticesResult, settingsResult].find((result) => result.error)?.error
+  const firstError = [profilesResult, ordersResult, stepsResult, accountResult, notificationsResult, noticesResult, settingsResult, contactsResult].find((result) => result.error)?.error
   if (firstError) throw firstError
 
   const notifications = (notificationsResult.data ?? []).map((row: Record<string, unknown>) => {
@@ -249,9 +254,15 @@ export async function fetchRemoteSnapshot(): Promise<{
     return mapNotification({ ...row, order_number: orderRelation?.order_number })
   })
   const accountRow = Array.isArray(accountResult.data) ? accountResult.data[0] : accountResult.data
+  const phoneByUserId = new Map<string, string>(
+    (contactsResult.data ?? []).map((row: Record<string, unknown>) => [stringValue(row.user_id), stringValue(row.phone_number)]),
+  )
 
   return {
-    members: (profilesResult.data ?? []).map((row: Record<string, unknown>) => mapProfile(row)),
+    members: (profilesResult.data ?? []).map((row: Record<string, unknown>) => mapProfile({
+      ...row,
+      phone_number: phoneByUserId.get(stringValue(row.id)) ?? '',
+    })),
     orders: (ordersResult.data ?? []).map((row: Record<string, unknown>) => mapOrder(row)),
     paymentSteps: (stepsResult.data ?? []).map((row: Record<string, unknown>) => mapPaymentStep(row)),
     paymentAccount: mapPaymentAccount(accountRow as Record<string, unknown> | null),
@@ -476,6 +487,16 @@ function mapSettlementRow(row: Record<string, unknown>): SettlementRow {
     registrantUsername: stringValue(row.registrantUsername),
     registrantGroupName: stringValue(row.registrantGroupName),
     startDate: stringValue(row.startDate),
+    registrantItemCount: numberValue(row.registrantItemCount),
+    registrantTotalAmount: numberValue(row.registrantTotalAmount),
+    registrantReadyCount: numberValue(row.registrantReadyCount),
+    registrantReadyAmount: numberValue(row.registrantReadyAmount),
+    registrantSparkCount: numberValue(row.registrantSparkCount),
+    registrantSparkAmount: numberValue(row.registrantSparkAmount),
+    registrantSparkPlusCount: numberValue(row.registrantSparkPlusCount),
+    registrantSparkPlusAmount: numberValue(row.registrantSparkPlusAmount),
+    registrantSparkSCount: numberValue(row.registrantSparkSCount),
+    registrantSparkSAmount: numberValue(row.registrantSparkSAmount),
   }
 }
 
@@ -494,11 +515,20 @@ function settlementRpcParams(filters: SettlementFilters) {
 
 export async function fetchSettlementPageV92(filters: SettlementFilters, page = 1, pageSize = 50): Promise<SettlementPageResult> {
   const client = requiredClient()
-  const { data, error } = await client.rpc('get_my_settlement_page_v92', {
+  let { data, error } = await client.rpc('get_my_settlement_page_v94', {
     ...settlementRpcParams(filters),
     p_page: page,
     p_page_size: pageSize,
   })
+  if (error && ['PGRST202', '42883'].includes(String(error.code ?? ''))) {
+    const fallback = await client.rpc('get_my_settlement_page_v92', {
+      ...settlementRpcParams(filters),
+      p_page: page,
+      p_page_size: pageSize,
+    })
+    data = fallback.data
+    error = fallback.error
+  }
   if (error) throw error
   const result = recordValue(data)
   const rows = Array.isArray(result.rows) ? result.rows.map((row) => mapSettlementRow(recordValue(row))) : []

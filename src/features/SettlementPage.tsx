@@ -80,6 +80,16 @@ function toSettlementRow(step: PaymentStep, orders: Order[]): SettlementRow {
     registrantUsername: order?.creatorUsername ?? '',
     registrantGroupName: order?.creatorGroupName ?? '',
     startDate: order?.startDate ?? '',
+    registrantItemCount: 0,
+    registrantTotalAmount: 0,
+    registrantReadyCount: 0,
+    registrantReadyAmount: 0,
+    registrantSparkCount: 0,
+    registrantSparkAmount: 0,
+    registrantSparkPlusCount: 0,
+    registrantSparkPlusAmount: 0,
+    registrantSparkSCount: 0,
+    registrantSparkSAmount: 0,
   }
 }
 
@@ -156,6 +166,7 @@ export function SettlementPage({
   const [selectAllFiltered, setSelectAllFiltered] = useState(false)
   const [excludedRows, setExcludedRows] = useState<Map<string, SettlementRow>>(new Map())
   const [quote, setQuote] = useState<SettlementQuote | null>(null)
+  const [quoteCompanyLabel, setQuoteCompanyLabel] = useState('')
   const [quoteLoading, setQuoteLoading] = useState(false)
   const [batchConfirming, setBatchConfirming] = useState(false)
   const [batchResult, setBatchResult] = useState<SettlementBatchResult | null>(null)
@@ -280,6 +291,43 @@ export function SettlementPage({
   const activeSummary = summary ?? localSummary
   const currentRows = activePage.rows
   const selectableRows = currentRows.filter((row) => !row.confirmedAt && row.canConfirm)
+  const adminCompanyGroups = useMemo(() => {
+    if (user.role !== 'admin') return []
+    const grouped = new Map<string, SettlementRow[]>()
+    currentRows.forEach((row) => {
+      const key = row.registrantId || `unknown-${row.id}`
+      const list = grouped.get(key) ?? []
+      list.push(row)
+      grouped.set(key, list)
+    })
+    return Array.from(grouped.entries()).map(([registrantId, rows]) => {
+      const first = rows[0]
+      const readyRows = rows.filter((row) => !row.confirmedAt && row.canConfirm)
+      const currentProgram = (program: ProgramType) => {
+        const items = rows.filter((row) => row.programType === program)
+        return { count: items.length, amount: items.reduce((sum, row) => sum + row.totalAmount, 0) }
+      }
+      const spark = currentProgram('spark')
+      const sparkPlus = currentProgram('spark_plus')
+      const sparkS = currentProgram('spark_s')
+      return {
+        registrantId,
+        username: first?.registrantUsername || '-',
+        groupName: first ? adminRegistrantLabel(first, orders) : '미지정 그룹',
+        rows,
+        itemCount: first?.registrantItemCount || rows.length,
+        totalAmount: first?.registrantTotalAmount || rows.reduce((sum, row) => sum + row.totalAmount, 0),
+        readyCount: first?.registrantReadyCount || readyRows.length,
+        readyAmount: first?.registrantReadyAmount || readyRows.reduce((sum, row) => sum + row.totalAmount, 0),
+        sparkCount: first?.registrantSparkCount || spark.count,
+        sparkAmount: first?.registrantSparkAmount || spark.amount,
+        sparkPlusCount: first?.registrantSparkPlusCount || sparkPlus.count,
+        sparkPlusAmount: first?.registrantSparkPlusAmount || sparkPlus.amount,
+        sparkSCount: first?.registrantSparkSCount || sparkS.count,
+        sparkSAmount: first?.registrantSparkSAmount || sparkS.amount,
+      }
+    })
+  }, [currentRows, orders, user.role])
 
   const isRowSelected = (row: SettlementRow) => selectAllFiltered ? !excludedRows.has(row.id) : selectedRows.has(row.id)
   const currentPageAllSelected = selectableRows.length > 0 && selectableRows.every(isRowSelected)
@@ -319,6 +367,10 @@ export function SettlementPage({
       return
     }
     setSelectedRows((current) => {
+      if (user.role === 'admin' && !current.has(row.id)) {
+        const selectedCompany = Array.from(current.values())[0]?.registrantId
+        if (selectedCompany && selectedCompany !== row.registrantId) return new Map([[row.id, row]])
+      }
       const next = new Map(current)
       if (next.has(row.id)) next.delete(row.id)
       else next.set(row.id, row)
@@ -408,6 +460,49 @@ export function SettlementPage({
           groups,
         }
       }
+      const explicitCompany = selectAllFiltered
+        ? ''
+        : Array.from(selectedRows.values())[0]?.registrantGroupName || Array.from(selectedRows.values())[0]?.registrantUsername || ''
+      setQuoteCompanyLabel(user.role === 'admin' ? explicitCompany : '')
+      setQuote(nextQuote)
+    } catch (error) {
+      window.alert(getErrorMessage(error))
+    } finally {
+      setQuoteLoading(false)
+    }
+  }
+
+  const openCompanyBatchQuote = async (registrantId: string, label: string) => {
+    if (!registrantId || quoteLoading) return
+    setQuoteLoading(true)
+    try {
+      let nextQuote: SettlementQuote
+      const companyFilters: SettlementFilters = { ...filters, registrantId, status: 'waiting' }
+      if (isSupabaseConfigured) {
+        nextQuote = await createSettlementQuoteV92({
+          selectionMode: 'filtered',
+          selectedStepIds: [],
+          excludedStepIds: [],
+          filters: companyFilters,
+        })
+      } else {
+        const rows = localFilterRows(localIncomingRows, companyFilters).filter((row) => !row.confirmedAt && row.canConfirm)
+        const groups = Array.from(rows.reduce((map, row) => {
+          const current = map.get(row.payerId) ?? { payerId: row.payerId, payerUsername: row.payerUsername, itemCount: 0, expectedAmount: 0 }
+          current.itemCount += 1
+          current.expectedAmount += row.totalAmount
+          map.set(row.payerId, current)
+          return map
+        }, new Map<string, SettlementQuote['groups'][number]>()).values())
+        nextQuote = {
+          id: `local-${crypto.randomUUID()}`,
+          itemCount: rows.length,
+          expectedAmount: rows.reduce((sum, row) => sum + row.totalAmount, 0),
+          expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+          groups,
+        }
+      }
+      setQuoteCompanyLabel(label)
       setQuote(nextQuote)
     } catch (error) {
       window.alert(getErrorMessage(error))
@@ -454,6 +549,7 @@ export function SettlementPage({
         }
       }
       setQuote(null)
+      setQuoteCompanyLabel('')
       setBatchResult(result)
       clearSelection()
       await refreshSettlementData()
@@ -541,13 +637,13 @@ export function SettlementPage({
       <section className={`settlement-chain-grid ${user.role === 'admin' ? 'admin-settlement-grid' : ''}`}>
         <section className="panel compact-panel fill-panel settlement-incoming-panel">
           <div className="panel-header settlement-panel-header">
-            <div><h2>{user.role === 'admin' ? '관리자 입금 확인' : '하위 대행사 입금 확인'}</h2><p>입금자·등록자·업체를 대조한 뒤 개별 또는 일괄로 확인합니다.</p></div>
+            <div><h2>{user.role === 'admin' ? '업체별 입금 확인' : '하위 대행사 입금 확인'}</h2><p>{user.role === 'admin' ? '등록 업체별로 작업과 예정 입금액을 나누어 확인합니다.' : '입금자·등록자·업체를 대조한 뒤 개별 또는 일괄로 확인합니다.'}</p></div>
             <button className="secondary-button small" disabled={settlementLoading} onClick={() => void refreshSettlementData()}>{settlementLoading ? '조회 중' : '새로고침'}</button>
           </div>
 
           <div className="settlement-filter-bar">
             <label className="settlement-search-field"><span>업체·MID·주문번호</span><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="검색어 입력" /></label>
-            <label><span>입금자</span><select value={filters.payerId} onChange={(event) => setFilter('payerId', event.target.value)}><option value="">전체 입금자</option>{filterOptions.payers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
+            {user.role !== 'admin' && <label><span>입금자</span><select value={filters.payerId} onChange={(event) => setFilter('payerId', event.target.value)}><option value="">전체 입금자</option>{filterOptions.payers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}
             <label><span>등록자</span><select value={filters.registrantId} onChange={(event) => setFilter('registrantId', event.target.value)}><option value="">전체 등록자</option>{filterOptions.registrants.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
             {user.role === 'admin' && <label><span>등록 그룹</span><select value={filters.groupName} onChange={(event) => setFilter('groupName', event.target.value)}><option value="">전체 그룹</option>{filterOptions.groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
             <label><span>프로그램</span><select value={filters.programType} onChange={(event) => setFilter('programType', event.target.value as ProgramType | 'all')}><option value="all">전체 프로그램</option><option value="spark">스파크</option><option value="spark_plus">스파크 +</option><option value="spark_s">스파크S</option></select></label>
@@ -560,27 +656,66 @@ export function SettlementPage({
           <div className="settlement-result-summary">
             <div><strong>검색 결과 {activePage.totalCount.toLocaleString('ko-KR')}건</strong><span>합계 {formatWon(activePage.totalAmount)}</span></div>
             <div><strong>지금 확인 가능 {activePage.readyCount.toLocaleString('ko-KR')}건</strong><span>{formatWon(activePage.readyAmount)}</span></div>
-            {filters.status !== 'confirmed' && activePage.readyCount > 0 && <button className="secondary-button small" onClick={selectFilteredReadyRows}>확인 가능 전체 선택</button>}
+            {user.role !== 'admin' && filters.status !== 'confirmed' && activePage.readyCount > 0 && <button className="secondary-button small" onClick={selectFilteredReadyRows}>확인 가능 전체 선택</button>}
           </div>
 
           {settlementError && <div className="inline-error settlement-inline-error">{settlementError}</div>}
-          {settlementLoading && !pageResult ? <div className="empty-state">정산 내역을 불러오는 중입니다.</div> : currentRows.length === 0 ? <div className="empty-state">조건에 맞는 입금 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap">
+          {settlementLoading && !pageResult ? <div className="empty-state">정산 내역을 불러오는 중입니다.</div> : currentRows.length === 0 ? <div className="empty-state">조건에 맞는 입금 내역이 없습니다.</div> : user.role === 'admin' ? (
+            <div className="admin-settlement-company-list">
+              {adminCompanyGroups.map((company) => <article key={company.registrantId} className="settlement-company-card">
+                <header className="settlement-company-header">
+                  <div className="settlement-company-title">
+                    <span>등록 업체</span>
+                    <strong>{company.groupName}</strong>
+                    <small>계정 {company.username} · 전체 {company.itemCount.toLocaleString('ko-KR')}건</small>
+                  </div>
+                  <div className="settlement-company-total">
+                    <span>총 예정 입금액</span>
+                    <strong>{formatWon(company.totalAmount)}</strong>
+                    <small>지금 확인 가능 {company.readyCount.toLocaleString('ko-KR')}건 · {formatWon(company.readyAmount)}</small>
+                  </div>
+                </header>
+                <div className="settlement-company-programs">
+                  {company.sparkCount > 0 && <span><b>스파크</b>{company.sparkCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkAmount)}</span>}
+                  {company.sparkPlusCount > 0 && <span><b>스파크 +</b>{company.sparkPlusCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkPlusAmount)}</span>}
+                  {company.sparkSCount > 0 && <span><b>스파크S</b>{company.sparkSCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkSAmount)}</span>}
+                </div>
+                <div className="settlement-company-actions">
+                  <span>현재 페이지 {company.rows.length.toLocaleString('ko-KR')}건 표시</span>
+                  {filters.status !== 'confirmed' && company.readyCount > 0 && <button className="primary-button small" disabled={quoteLoading} onClick={() => void openCompanyBatchQuote(company.registrantId, company.groupName)}>{quoteLoading ? '금액 확인 중...' : '이 업체 전체 입금확인'}</button>}
+                </div>
+                <div className="desktop-table settlement-company-table-wrap">
+                  <table className="simple-table settlement-company-table">
+                    <thead><tr><th className="checkbox-column"></th><th>프로그램</th><th>주문번호 / MID</th><th>단가</th><th>예정 입금액</th><th>상태</th><th>확인</th></tr></thead>
+                    <tbody>{company.rows.map((step) => <tr key={step.id} className={isRowSelected(step) ? 'selected-settlement-row' : ''}>
+                      <td className="checkbox-column"><input type="checkbox" aria-label={`${step.orderNumber} 선택`} checked={isRowSelected(step)} disabled={Boolean(step.confirmedAt) || !step.canConfirm} onChange={() => toggleRow(step)} /></td>
+                      <td><strong>{labelForProgram(step.programType)}</strong></td>
+                      <td><strong>{step.orderNumber}</strong><small>MID {step.mid || '-'} · 시작 {formatDate(step.startDate)}</small></td>
+                      <td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td>
+                      <td><strong>{formatWon(step.totalAmount)}</strong></td>
+                      <td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : step.canConfirm ? <span className="payment-waiting-text">입금대기</span> : <span className="payment-chain-waiting-text">이전 단계 확인 대기</span>}</td>
+                      <td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>}</td>
+                    </tr>)}</tbody>
+                  </table>
+                </div>
+              </article>)}
+            </div>
+          ) : <div className="desktop-table settlement-table-wrap">
             <table className="simple-table settlement-table settlement-incoming-table settlement-bulk-table">
               <thead><tr>
                 <th className="checkbox-column"><input type="checkbox" aria-label="현재 페이지 전체 선택" checked={currentPageAllSelected} onChange={toggleCurrentPage} disabled={selectableRows.length === 0} /></th>
-                <th>작업</th><th>입금자</th><th>등록자</th>{user.role === 'admin' && <th>등록 그룹</th>}<th>프로그램</th><th>단가</th><th>입금액</th><th>상태</th><th>확인</th>
+                <th>작업</th><th>입금자</th><th>등록자</th><th>프로그램</th><th>단가</th><th>입금액</th><th>상태</th><th>확인</th>
               </tr></thead>
               <tbody>{currentRows.map((step) => <tr key={step.id} className={isRowSelected(step) ? 'selected-settlement-row' : ''}>
                 <td className="checkbox-column"><input type="checkbox" aria-label={`${step.storeName} 선택`} checked={isRowSelected(step)} disabled={Boolean(step.confirmedAt) || !step.canConfirm} onChange={() => toggleRow(step)} /></td>
                 <td><strong>{step.storeName}</strong><small>{step.orderNumber} · MID {step.mid || '-'}</small></td>
                 <td>{step.payerUsername}</td>
                 <td>{step.registrantUsername || '-'}</td>
-                {user.role === 'admin' && <td>{adminRegistrantLabel(step, orders)}</td>}
                 <td>{labelForProgram(step.programType)}</td>
                 <td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td>
                 <td><strong>{formatWon(step.totalAmount)}</strong></td>
                 <td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : step.canConfirm ? <span className="payment-waiting-text">입금대기</span> : <span className="payment-chain-waiting-text">이전 단계 확인 대기</span>}</td>
-                <td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} title={!step.canConfirm ? `이전 정산 ${Math.max(1, step.previousPendingCount)}건의 확인이 먼저 필요합니다.` : '실제 입금 확인 후 처리합니다.'} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>}</td>
+                <td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>}</td>
               </tr>)}</tbody>
             </table>
           </div>}
@@ -607,12 +742,12 @@ export function SettlementPage({
 
       {selectedCount > 0 && <div className="settlement-selection-bar">
         <div><strong>{selectedCount.toLocaleString('ko-KR')}건 선택</strong><span>예정 입금액 {formatWon(selectedAmount)}</span>{selectAllFiltered && <small>검색 결과 전체 선택 · 제외 {excludedRows.size}건</small>}</div>
-        <div><button className="secondary-button" onClick={clearSelection}>선택 해제</button><button className="primary-button" disabled={quoteLoading} onClick={() => void openBatchQuote()}>{quoteLoading ? '금액 확인 중...' : '일괄 입금확인'}</button></div>
+        <div><button className="secondary-button" onClick={clearSelection}>선택 해제</button><button className="primary-button" disabled={quoteLoading} onClick={() => void openBatchQuote()}>{quoteLoading ? '금액 확인 중...' : user.role === 'admin' ? '선택 작업 입금확인' : '일괄 입금확인'}</button></div>
       </div>}
 
-      {quote && <Modal title="일괄 입금확인" description={`${formatWon(quote.expectedAmount)} 입금을 확인하시겠습니까?`} onClose={() => { if (!batchConfirming) setQuote(null) }} footer={<><button className="secondary-button" disabled={batchConfirming} onClick={() => setQuote(null)}>취소</button><button className="primary-button" disabled={!quoteIsValid || batchConfirming} onClick={() => void confirmBatch()}>{batchConfirming ? '입금 확인 중...' : '입금확인'}</button></>}>
+      {quote && <Modal title={user.role === 'admin' && quoteCompanyLabel ? `${quoteCompanyLabel} 입금확인` : '일괄 입금확인'} description={`${formatWon(quote.expectedAmount)} 입금을 확인하시겠습니까?`} onClose={() => { if (!batchConfirming) setQuote(null) }} footer={<><button className="secondary-button" disabled={batchConfirming} onClick={() => setQuote(null)}>취소</button><button className="primary-button" disabled={!quoteIsValid || batchConfirming} onClick={() => void confirmBatch()}>{batchConfirming ? '입금 확인 중...' : '입금확인'}</button></>}>
         <div className="settlement-quote-summary settlement-quote-summary-simple"><span>선택 작업</span><strong>{quote.itemCount.toLocaleString('ko-KR')}건</strong><span>확인 금액</span><strong>{formatWon(quote.expectedAmount)}</strong><small>선택한 작업과 금액이 정확한지 확인해 주세요. 확인 후 다음 정산 단계로 넘어갑니다.</small></div>
-        {quote.groups.length > 1 && <div className="settlement-quote-groups">{quote.groups.map((group) => <article key={group.payerId} className="quote-group-valid quote-group-auto">
+        {user.role !== 'admin' && quote.groups.length > 1 && <div className="settlement-quote-groups">{quote.groups.map((group) => <article key={group.payerId} className="quote-group-valid quote-group-auto">
           <header><div><strong>{group.payerUsername}</strong><span>{group.itemCount.toLocaleString('ko-KR')}건</span></div><strong>{formatWon(group.expectedAmount)}</strong></header>
         </article>)}</div>}
         <div className="settlement-confirm-warning"><Icon name="check" size={16} /><span>실제 입금이 완료된 내역만 확인해 주세요. 처리 후에는 정산 묶음 내역에 기록됩니다.</span></div>

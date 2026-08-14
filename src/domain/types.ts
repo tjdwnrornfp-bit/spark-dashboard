@@ -14,6 +14,7 @@ export interface ProgramPriceMap {
 export interface User {
   id: string
   username: string
+  phoneNumber: string
   passwordHash?: string
   role: Role | null
   approvalStatus: ApprovalStatus
@@ -40,6 +41,7 @@ export interface User {
 
 export interface SignupDraft {
   username: string
+  phoneNumber: string
   password: string
   passwordConfirm: string
   referralCode: string
@@ -205,6 +207,16 @@ export interface SettlementRow extends PaymentStep {
   registrantUsername: string
   registrantGroupName: string
   startDate: string
+  registrantItemCount: number
+  registrantTotalAmount: number
+  registrantReadyCount: number
+  registrantReadyAmount: number
+  registrantSparkCount: number
+  registrantSparkAmount: number
+  registrantSparkPlusCount: number
+  registrantSparkPlusAmount: number
+  registrantSparkSCount: number
+  registrantSparkSAmount: number
 }
 
 export interface SettlementPageResult {

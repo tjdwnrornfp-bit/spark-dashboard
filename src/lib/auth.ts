@@ -40,3 +40,25 @@ export async function usernameToAuthEmail(username: string): Promise<string> {
   const hex = Array.from(new Uint8Array(digest)).map((byte) => byte.toString(16).padStart(2, '0')).join('')
   return `u_${hex}@spark.invalid`
 }
+
+export function normalizePhoneNumber(phoneNumber: string | null | undefined): string {
+  return (phoneNumber ?? '').replace(/[^0-9]/g, '')
+}
+
+export function validatePhoneNumber(phoneNumber: string): string | null {
+  const digits = normalizePhoneNumber(phoneNumber)
+  if (!digits) return '전화번호를 입력해 주세요.'
+  if (digits.length < 8 || digits.length > 15) return '전화번호는 숫자 8~15자리로 입력해 주세요.'
+  return null
+}
+
+export function formatPhoneNumber(phoneNumber: string | null | undefined): string {
+  const digits = normalizePhoneNumber(phoneNumber)
+  if (!digits) return '-'
+  if (digits.length === 11 && digits.startsWith('010')) return `${digits.slice(0, 3)}-${digits.slice(3, 7)}-${digits.slice(7)}`
+  if (digits.length === 10 && digits.startsWith('02')) return `${digits.slice(0, 2)}-${digits.slice(2, 6)}-${digits.slice(6)}`
+  if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`
+  if (digits.length === 9 && digits.startsWith('02')) return `${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`
+  return digits
+}
+

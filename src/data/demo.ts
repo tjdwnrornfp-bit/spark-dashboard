@@ -6,6 +6,7 @@ const USER_HASH = 'bd94dcda26fccb4e68d6a31f9b5aac0b571ae266d822620e901ef7ebe3a11
 function memberBase(partial: Partial<User> & Pick<User, 'id' | 'username' | 'role' | 'approvalStatus' | 'active'>): User {
   return {
     passwordHash: USER_HASH,
+    phoneNumber: '',
     requestedAt: '2026-07-10T02:10:00.000Z',
     approvedAt: partial.approvalStatus === 'approved' ? '2026-07-10T04:00:00.000Z' : null,
     updatedAt: '2026-07-10T04:00:00.000Z',
@@ -30,10 +31,10 @@ function memberBase(partial: Partial<User> & Pick<User, 'id' | 'username' | 'rol
 
 export const DEMO_USERS: User[] = [
   memberBase({ id: 'admin-demo', username: 'admin', passwordHash: ADMIN_HASH, role: 'admin', approvalStatus: 'approved', active: true, referralCode: 'ADMIN', groupName: '관리자' }),
-  memberBase({ id: 'distributor-demo', username: 'dist1', role: 'distributor', approvalStatus: 'approved', active: true, groupName: 'A그룹', bank: '국민은행', accountNumber: '111-222-333333', accountHolder: '총판 데모', pricePerShot: 80, sparkPricePerShot: 80, sparkPlusPricePerShot: 95, sparkSPricePerShot: 110 }),
-  memberBase({ id: 'agency-demo', username: 'agency1', role: 'agency', approvalStatus: 'approved', active: true, sponsorId: 'distributor-demo', sponsorUsername: 'dist1', hierarchyDepth: 1, groupName: 'A그룹', bank: '신한은행', accountNumber: '444-555-666666', accountHolder: '대행사 데모', pricePerShot: 100, sparkPricePerShot: 100, sparkPlusPricePerShot: 120, sparkSPricePerShot: 140 }),
-  memberBase({ id: 'subagency-demo', username: 'agency2', role: 'agency', approvalStatus: 'approved', active: true, sponsorId: 'agency-demo', sponsorUsername: 'agency1', hierarchyDepth: 2, groupName: 'A그룹', pricePerShot: 120, sparkPricePerShot: 120, sparkPlusPricePerShot: 140, sparkSPricePerShot: 160 }),
-  memberBase({ id: 'pending-demo', username: 'newagency', role: 'agency', approvalStatus: 'pending', active: false, sponsorId: 'agency-demo', sponsorUsername: 'agency1', hierarchyDepth: 2, groupName: 'A그룹', requestedAt: new Date().toISOString(), approvedAt: null, updatedAt: new Date().toISOString() }),
+  memberBase({ id: 'distributor-demo', username: 'dist1', phoneNumber: '01011112222', role: 'distributor', approvalStatus: 'approved', active: true, groupName: 'A그룹', bank: '국민은행', accountNumber: '111-222-333333', accountHolder: '총판 데모', pricePerShot: 80, sparkPricePerShot: 80, sparkPlusPricePerShot: 95, sparkSPricePerShot: 110 }),
+  memberBase({ id: 'agency-demo', username: 'agency1', phoneNumber: '01033334444', role: 'agency', approvalStatus: 'approved', active: true, sponsorId: 'distributor-demo', sponsorUsername: 'dist1', hierarchyDepth: 1, groupName: 'A그룹', bank: '신한은행', accountNumber: '444-555-666666', accountHolder: '대행사 데모', pricePerShot: 100, sparkPricePerShot: 100, sparkPlusPricePerShot: 120, sparkSPricePerShot: 140 }),
+  memberBase({ id: 'subagency-demo', username: 'agency2', phoneNumber: '01055556666', role: 'agency', approvalStatus: 'approved', active: true, sponsorId: 'agency-demo', sponsorUsername: 'agency1', hierarchyDepth: 2, groupName: 'A그룹', pricePerShot: 120, sparkPricePerShot: 120, sparkPlusPricePerShot: 140, sparkSPricePerShot: 160 }),
+  memberBase({ id: 'pending-demo', username: 'newagency', phoneNumber: '01077778888', role: 'agency', approvalStatus: 'pending', active: false, sponsorId: 'agency-demo', sponsorUsername: 'agency1', hierarchyDepth: 2, groupName: 'A그룹', requestedAt: new Date().toISOString(), approvedAt: null, updatedAt: new Date().toISOString() }),
 ]
 
 export function makeDemoOrders(): Order[] {
