@@ -823,19 +823,24 @@ export function SettlementPage({
                   <span>현재 페이지 {company.rows.length.toLocaleString('ko-KR')}건 표시</span>
                   {filters.status !== 'confirmed' && company.readyCount > 0 && <button className="primary-button small" disabled={quoteLoading} onClick={() => void openCompanyBatchQuote(company.registrantId, company.groupName)}>{quoteLoading ? '금액 확인 중...' : '이 업체 전체 입금확인'}</button>}
                 </div>
-                <div className="desktop-table settlement-company-table-wrap">
-                  <table className="simple-table settlement-company-table">
-                    <thead><tr><th className="checkbox-column"></th><th>프로그램</th><th>주문번호 / MID</th><th>단가</th><th>예정 입금액</th><th>상태</th><th>확인</th></tr></thead>
-                    <tbody>{company.rows.map((step) => <tr key={step.id} className={isRowSelected(step) ? 'selected-settlement-row' : ''}>
-                      <td className="checkbox-column"><input type="checkbox" aria-label={`${step.orderNumber} 선택`} checked={isRowSelected(step)} disabled={Boolean(step.confirmedAt) || !step.canConfirm} onChange={() => toggleRow(step)} /></td>
-                      <td><strong>{labelForProgram(step.programType)}</strong></td>
-                      <td><strong>{step.orderNumber}</strong><small>MID {step.mid || '-'} · 시작 {formatDate(step.startDate)}</small></td>
-                      <td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td>
-                      <td><strong>{formatWon(step.totalAmount)}</strong></td>
-                      <td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : step.canConfirm ? <span className="payment-waiting-text">입금대기</span> : <span className="payment-chain-waiting-text">이전 단계 확인 대기</span>}</td>
-                      <td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>}</td>
-                    </tr>)}</tbody>
-                  </table>
+                <div className="settlement-payment-card-grid">
+                  {company.rows.map((step) => <article key={step.id} className={`settlement-payment-card ${isRowSelected(step) ? 'selected' : ''} ${step.confirmedAt ? 'confirmed' : ''}`}>
+                    <header>
+                      <label className="settlement-payment-check">
+                        <input type="checkbox" aria-label={`${labelForProgram(step.programType)} ${formatWon(step.totalAmount)} 선택`} checked={isRowSelected(step)} disabled={Boolean(step.confirmedAt) || !step.canConfirm} onChange={() => toggleRow(step)} />
+                        <span>{labelForProgram(step.programType)}</span>
+                      </label>
+                      {step.confirmedAt ? <span className="payment-confirmed-text">확인완료</span> : step.canConfirm ? <span className="payment-waiting-text">입금대기</span> : <span className="payment-chain-waiting-text">순서대기</span>}
+                    </header>
+                    <div className="settlement-payment-card-body">
+                      <div><span>적용 단가</span><strong>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</strong></div>
+                      <div className="amount"><span>예정 입금액</span><strong>{formatWon(step.totalAmount)}</strong></div>
+                      <div><span>시작일</span><strong>{formatDate(step.startDate)}</strong></div>
+                    </div>
+                    <footer>
+                      {step.confirmedAt ? <span className="settlement-payment-confirmed-at">{formatDateTime(step.confirmedAt)} 확인</span> : <button className="primary-button small settlement-payment-card-button" disabled={changingId === step.id || !step.canConfirm} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '이전 단계 대기'}</button>}
+                    </footer>
+                  </article>)}
                 </div>
               </article>)}
             </div>
@@ -922,7 +927,6 @@ export function SettlementPage({
             </div>
 
             <footer>
-              <span>입금완료 {company.confirmedOrderCount.toLocaleString('ko-KR')}건 · 만료 {company.expiredCount.toLocaleString('ko-KR')}건</span>
               <button className="secondary-button small" disabled={company.waitingOrderCount === 0} onClick={() => focusCompanySettlements(company.registrantId)}>{company.waitingOrderCount > 0 ? '대기 정산 보기' : '정산 완료'}</button>
             </footer>
           </article>)}

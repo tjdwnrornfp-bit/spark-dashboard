@@ -2616,3 +2616,312 @@ td small { margin-top: 4px; font-size: 10px; }
   .company-overview-card > footer button { width: 100%; }
   .company-overview-pagination { padding: 10px 16px 16px; }
 }
+
+/* v9.7: compact admin settlement cards + denser company overview */
+.admin-settlement-company-list {
+  gap: 10px;
+}
+
+.settlement-company-card {
+  border-radius: 11px;
+  box-shadow: 0 4px 16px rgba(36, 57, 91, .04);
+}
+
+.settlement-company-header {
+  gap: 16px;
+  padding: 13px 15px 11px;
+}
+
+.settlement-company-title > strong {
+  font-size: 15px;
+}
+
+.settlement-company-title > small,
+.settlement-company-total > small {
+  font-size: 9px;
+}
+
+.settlement-company-total {
+  min-width: 180px;
+}
+
+.settlement-company-total > strong {
+  font-size: 18px;
+}
+
+.settlement-company-programs {
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.settlement-company-programs > span {
+  gap: 4px;
+  padding: 4px 7px;
+  font-size: 9px;
+}
+
+.settlement-company-actions {
+  padding: 8px 14px;
+}
+
+.settlement-company-actions > span {
+  font-size: 9px;
+}
+
+.settlement-payment-card-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px 12px;
+  background: #f8fafc;
+}
+
+.settlement-payment-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e1e6ee;
+  border-radius: 9px;
+  background: #fff;
+  transition: border-color .15s ease, box-shadow .15s ease, background .15s ease;
+}
+
+.settlement-payment-card.selected {
+  border-color: #89acef;
+  background: #f7faff;
+  box-shadow: 0 0 0 2px rgba(48, 103, 220, .07);
+}
+
+.settlement-payment-card.confirmed {
+  background: #fbfcfd;
+}
+
+.settlement-payment-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.settlement-payment-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  color: #17253a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.settlement-payment-check input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: #2f67db;
+}
+
+.settlement-payment-card > header .payment-waiting-text,
+.settlement-payment-card > header .payment-confirmed-text,
+.settlement-payment-card > header .payment-chain-waiting-text {
+  flex: 0 0 auto;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.settlement-payment-card-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 9px 10px;
+}
+
+.settlement-payment-card-body > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 7px;
+  background: #f6f8fb;
+}
+
+.settlement-payment-card-body > .amount {
+  background: #eef4ff;
+}
+
+.settlement-payment-card-body span {
+  color: #8a94a2;
+  font-size: 8px;
+  font-weight: 700;
+}
+
+.settlement-payment-card-body strong {
+  overflow: hidden;
+  color: #223149;
+  font-size: 11px;
+  letter-spacing: -.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settlement-payment-card-body > .amount strong {
+  color: #185fd3;
+  font-size: 13px;
+}
+
+.settlement-payment-card > footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-height: 38px;
+  padding: 7px 10px;
+  border-top: 1px solid #edf0f4;
+  background: #fcfdff;
+}
+
+.settlement-payment-card-button {
+  width: 100%;
+  min-height: 29px;
+  padding: 5px 9px;
+  font-size: 10px;
+}
+
+.settlement-payment-confirmed-at {
+  width: 100%;
+  color: #18805a;
+  font-size: 9px;
+  text-align: center;
+}
+
+/* The overview is intentionally denser: four companies per row on desktop. */
+.company-overview-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 9px;
+  padding: 13px 16px 6px;
+}
+
+.company-overview-heading {
+  padding: 16px 17px 12px;
+}
+
+.company-overview-summary {
+  margin: 0 17px;
+}
+
+.company-overview-card {
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(31, 48, 78, 0.035);
+}
+
+.company-overview-card > header {
+  gap: 8px;
+  padding: 11px 11px 9px;
+}
+
+.company-overview-identity > strong {
+  font-size: 13px;
+}
+
+.company-overview-identity > small {
+  font-size: 8px;
+}
+
+.company-overview-state {
+  padding: 4px 6px;
+  font-size: 8px;
+}
+
+.company-overview-metrics {
+  gap: 5px;
+  padding: 9px 9px 7px;
+}
+
+.company-overview-metrics > div {
+  gap: 2px;
+  padding: 7px 7px;
+  border-radius: 7px;
+}
+
+.company-overview-metrics span,
+.company-overview-running span {
+  font-size: 8px;
+}
+
+.company-overview-metrics strong {
+  font-size: 12px;
+}
+
+.company-overview-running {
+  margin: 0 9px 7px;
+  border-radius: 7px;
+}
+
+.company-overview-running > div {
+  gap: 2px;
+  padding: 7px;
+}
+
+.company-overview-running strong {
+  font-size: 11px;
+}
+
+.company-overview-programs {
+  gap: 4px;
+  padding: 0 9px 8px;
+}
+
+.company-overview-programs > span {
+  gap: 3px;
+  padding: 4px 5px;
+  border-radius: 6px;
+  font-size: 8px;
+}
+
+.company-overview-card > footer {
+  justify-content: flex-end;
+  padding: 7px 9px;
+}
+
+.company-overview-card > footer > span {
+  display: none;
+}
+
+.company-overview-card > footer button {
+  min-height: 28px;
+  padding: 5px 8px;
+  font-size: 9px;
+}
+
+.company-overview-pagination {
+  padding: 8px 17px 14px;
+}
+
+@media (max-width: 1380px) {
+  .settlement-payment-card-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .company-overview-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 1080px) {
+  .settlement-payment-card-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .company-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 720px) {
+  .settlement-company-header {
+    grid-template-columns: 1fr;
+    gap: 9px;
+  }
+  .settlement-company-total {
+    min-width: 0;
+    padding-top: 8px;
+    border-top: 1px dashed #dfe5ef;
+    text-align: left;
+  }
+  .settlement-payment-card-grid,
+  .company-overview-grid { grid-template-columns: 1fr; }
+  .settlement-payment-card-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .company-overview-grid { padding: 10px 12px 5px; }
+  .company-overview-heading { padding: 14px 13px 11px; }
+  .company-overview-summary { margin: 0 13px; }
+}
