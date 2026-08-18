@@ -2925,3 +2925,49 @@ td small { margin-top: 4px; font-size: 10px; }
   .company-overview-heading { padding: 14px 13px 11px; }
   .company-overview-summary { margin: 0 13px; }
 }
+
+/* v9.7.1: grouped settlement boxes keep the original table-style rows. */
+.settlement-company-table-compact-wrap {
+  border-top: 1px solid #edf1f6;
+  overflow-x: auto;
+}
+
+.settlement-company-table-compact {
+  min-width: 650px;
+  table-layout: fixed;
+}
+
+.settlement-company-table-compact th,
+.settlement-company-table-compact td {
+  padding: 10px 12px;
+  font-size: 11px;
+}
+
+.settlement-company-table-compact th {
+  color: #7b8595;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.settlement-company-table-compact th:nth-child(1),
+.settlement-company-table-compact td:nth-child(1) { width: 48px; }
+.settlement-company-table-compact th:nth-child(2),
+.settlement-company-table-compact td:nth-child(2) { width: 120px; }
+.settlement-company-table-compact th:nth-child(3),
+.settlement-company-table-compact td:nth-child(3) { width: 135px; }
+.settlement-company-table-compact th:nth-child(4),
+.settlement-company-table-compact td:nth-child(4) { width: 155px; }
+.settlement-company-table-compact th:nth-child(5),
+.settlement-company-table-compact td:nth-child(5) { width: 190px; }
+.settlement-company-table-compact th:nth-child(6),
+.settlement-company-table-compact td:nth-child(6) { width: 112px; }
+
+.settlement-company-table-compact .payment-confirm-button {
+  width: 100%;
+  min-width: 84px;
+}
+
+/* v9.7 overview remains four compact company cards per desktop row. */
+@media (min-width: 1381px) {
+  .company-overview-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
