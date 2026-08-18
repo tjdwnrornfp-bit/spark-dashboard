@@ -1,6 +1,8 @@
 import type {
   AccountDraft,
   AppSettings,
+  AdminCompanyOverviewResult,
+  CompanyOverviewSort,
   AuditLog,
   MemberDeletionCheck,
   MemberDeletionResult,
@@ -687,6 +689,60 @@ export async function confirmSettlementQuoteV92(quoteId: string, confirmations: 
         confirmedAt: stringValue(batch.confirmedAt),
       }
     }) : [],
+  }
+}
+
+
+
+export async function fetchAdminCompanyOverviewV96(params: {
+  page?: number
+  pageSize?: number
+  query?: string
+  sort?: CompanyOverviewSort
+} = {}): Promise<AdminCompanyOverviewResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_admin_company_overview_v96', {
+    p_page: params.page ?? 1,
+    p_page_size: params.pageSize ?? 12,
+    p_query: params.query?.trim() || null,
+    p_sort: params.sort ?? 'pending_amount',
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  const companies = Array.isArray(result.companies) ? result.companies.map((item) => {
+    const row = recordValue(item)
+    return {
+      registrantId: stringValue(row.registrantId),
+      username: stringValue(row.username),
+      groupName: stringValue(row.groupName) || '미지정 그룹',
+      totalOrders: numberValue(row.totalOrders),
+      waitingOrderCount: numberValue(row.waitingOrderCount),
+      waitingAmount: numberValue(row.waitingAmount),
+      confirmedOrderCount: numberValue(row.confirmedOrderCount),
+      confirmedAmount: numberValue(row.confirmedAmount),
+      expiredCount: numberValue(row.expiredCount),
+      runningCount: numberValue(row.runningCount),
+      dailyRunningShots: numberValue(row.dailyRunningShots),
+      sparkSRunningUnits: numberValue(row.sparkSRunningUnits),
+      sparkCount: numberValue(row.sparkCount),
+      sparkPlusCount: numberValue(row.sparkPlusCount),
+      sparkSCount: numberValue(row.sparkSCount),
+      lastOrderAt: stringValue(row.lastOrderAt),
+    }
+  }) : []
+
+  return {
+    page: Math.max(1, numberValue(result.page) || params.page || 1),
+    pageSize: Math.max(1, numberValue(result.pageSize) || params.pageSize || 12),
+    totalPages: Math.max(1, numberValue(result.totalPages) || 1),
+    companyCount: numberValue(result.companyCount),
+    totalOrders: numberValue(result.totalOrders),
+    waitingAmount: numberValue(result.waitingAmount),
+    confirmedAmount: numberValue(result.confirmedAmount),
+    expiredCount: numberValue(result.expiredCount),
+    dailyRunningShots: numberValue(result.dailyRunningShots),
+    sparkSRunningUnits: numberValue(result.sparkSRunningUnits),
+    companies,
   }
 }
 

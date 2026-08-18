@@ -3,7 +3,9 @@ import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { StatusBadge } from '../components/StatusBadge'
 import type {
+  AdminCompanyOverviewResult,
   AppSettings,
+  CompanyOverviewSort,
   Order,
   PaymentAccount,
   PaymentStep,
@@ -22,6 +24,7 @@ import type {
 } from '../domain/types'
 import {
   createSettlementQuoteV92,
+  fetchAdminCompanyOverviewV96,
   fetchSettlementBatchHistoryV92,
   fetchSettlementBatchItemsV92,
   fetchSettlementFilterOptionsV92,
@@ -161,6 +164,12 @@ export function SettlementPage({
   const [batchDetailLoadingId, setBatchDetailLoadingId] = useState<string | null>(null)
   const [settlementLoading, setSettlementLoading] = useState(false)
   const [settlementError, setSettlementError] = useState('')
+  const [companyOverview, setCompanyOverview] = useState<AdminCompanyOverviewResult | null>(null)
+  const [companyOverviewPage, setCompanyOverviewPage] = useState(1)
+  const [companyOverviewQueryInput, setCompanyOverviewQueryInput] = useState('')
+  const [companyOverviewQuery, setCompanyOverviewQuery] = useState('')
+  const [companyOverviewSort, setCompanyOverviewSort] = useState<CompanyOverviewSort>('pending_amount')
+  const [companyOverviewLoading, setCompanyOverviewLoading] = useState(false)
 
   const [selectedRows, setSelectedRows] = useState<Map<string, SettlementRow>>(new Map())
   const [selectAllFiltered, setSelectAllFiltered] = useState(false)
@@ -221,6 +230,92 @@ export function SettlementPage({
     }
   }, [incomingSteps, outgoingSteps, user.role])
 
+  const localCompanyOverview = useMemo<AdminCompanyOverviewResult>(() => {
+    if (user.role !== 'admin') return {
+      page: 1, pageSize: 12, totalPages: 1, companyCount: 0, totalOrders: 0,
+      waitingAmount: 0, confirmedAmount: 0, expiredCount: 0, dailyRunningShots: 0,
+      sparkSRunningUnits: 0, companies: [],
+    }
+
+    const adminStepsByOrder = new Map<string, PaymentStep>()
+    incomingSteps.forEach((step) => {
+      adminStepsByOrder.set(step.orderDbId, step)
+      adminStepsByOrder.set(step.orderNumber, step)
+    })
+
+    const grouped = new Map<string, AdminCompanyOverviewResult['companies'][number]>()
+    activeOrders.forEach((order) => {
+      const key = order.createdBy || `unknown-${order.id}`
+      const current = grouped.get(key) ?? {
+        registrantId: order.createdBy,
+        username: order.creatorUsername || '-',
+        groupName: order.creatorGroupName.trim() || '미지정 그룹',
+        totalOrders: 0,
+        waitingOrderCount: 0,
+        waitingAmount: 0,
+        confirmedOrderCount: 0,
+        confirmedAmount: 0,
+        expiredCount: 0,
+        runningCount: 0,
+        dailyRunningShots: 0,
+        sparkSRunningUnits: 0,
+        sparkCount: 0,
+        sparkPlusCount: 0,
+        sparkSCount: 0,
+        lastOrderAt: order.createdAt,
+      }
+      const adminStep = adminStepsByOrder.get(order.dbId ?? order.id) ?? adminStepsByOrder.get(order.id)
+      current.totalOrders += 1
+      if (adminStep?.confirmedAt) {
+        current.confirmedOrderCount += 1
+        current.confirmedAmount += adminStep.totalAmount
+      } else if (adminStep) {
+        current.waitingOrderCount += 1
+        current.waitingAmount += adminStep.totalAmount
+      }
+      if (order.status === '만료') current.expiredCount += 1
+      if (order.status === '구동중') {
+        current.runningCount += 1
+        if (order.programType === 'spark_s') current.sparkSRunningUnits += order.dailyShots
+        else current.dailyRunningShots += order.dailyShots
+      }
+      if (order.programType === 'spark') current.sparkCount += 1
+      else if (order.programType === 'spark_plus') current.sparkPlusCount += 1
+      else current.sparkSCount += 1
+      if (order.createdAt > current.lastOrderAt) current.lastOrderAt = order.createdAt
+      grouped.set(key, current)
+    })
+
+    const query = companyOverviewQuery.trim().toLocaleLowerCase('ko-KR')
+    const filtered = Array.from(grouped.values()).filter((item) => !query
+      || item.groupName.toLocaleLowerCase('ko-KR').includes(query)
+      || item.username.toLocaleLowerCase('ko-KR').includes(query))
+    filtered.sort((a, b) => {
+      if (companyOverviewSort === 'daily_shots') return b.dailyRunningShots - a.dailyRunningShots || a.groupName.localeCompare(b.groupName, 'ko')
+      if (companyOverviewSort === 'orders') return b.totalOrders - a.totalOrders || a.groupName.localeCompare(b.groupName, 'ko')
+      if (companyOverviewSort === 'recent') return b.lastOrderAt.localeCompare(a.lastOrderAt) || a.groupName.localeCompare(b.groupName, 'ko')
+      return b.waitingAmount - a.waitingAmount || a.groupName.localeCompare(b.groupName, 'ko')
+    })
+
+    const pageSize = 12
+    const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
+    const safePage = Math.min(companyOverviewPage, totalPages)
+    const companies = filtered.slice((safePage - 1) * pageSize, safePage * pageSize)
+    return {
+      page: safePage,
+      pageSize,
+      totalPages,
+      companyCount: filtered.length,
+      totalOrders: filtered.reduce((sum, item) => sum + item.totalOrders, 0),
+      waitingAmount: filtered.reduce((sum, item) => sum + item.waitingAmount, 0),
+      confirmedAmount: filtered.reduce((sum, item) => sum + item.confirmedAmount, 0),
+      expiredCount: filtered.reduce((sum, item) => sum + item.expiredCount, 0),
+      dailyRunningShots: filtered.reduce((sum, item) => sum + item.dailyRunningShots, 0),
+      sparkSRunningUnits: filtered.reduce((sum, item) => sum + item.sparkSRunningUnits, 0),
+      companies,
+    }
+  }, [activeOrders, companyOverviewPage, companyOverviewQuery, companyOverviewSort, incomingSteps, user.role])
+
   const loadSettlementPage = useCallback(async () => {
     if (!isSupabaseConfigured) return
     setSettlementLoading(true)
@@ -253,9 +348,29 @@ export function SettlementPage({
     }
   }, [])
 
+  const loadCompanyOverview = useCallback(async () => {
+    if (!isSupabaseConfigured || user.role !== 'admin') return
+    setCompanyOverviewLoading(true)
+    try {
+      const nextOverview = await fetchAdminCompanyOverviewV96({
+        page: companyOverviewPage,
+        pageSize: 12,
+        query: companyOverviewQuery,
+        sort: companyOverviewSort,
+      })
+      setCompanyOverview(nextOverview)
+      if (nextOverview.page > nextOverview.totalPages) setCompanyOverviewPage(nextOverview.totalPages)
+      else if (nextOverview.page !== companyOverviewPage) setCompanyOverviewPage(nextOverview.page)
+    } catch (error) {
+      setSettlementError(getErrorMessage(error))
+    } finally {
+      setCompanyOverviewLoading(false)
+    }
+  }, [companyOverviewPage, companyOverviewQuery, companyOverviewSort, user.role])
+
   const refreshSettlementData = useCallback(async () => {
-    await Promise.all([loadSettlementPage(), loadSettlementMeta()])
-  }, [loadSettlementMeta, loadSettlementPage])
+    await Promise.all([loadSettlementPage(), loadSettlementMeta(), loadCompanyOverview()])
+  }, [loadCompanyOverview, loadSettlementMeta, loadSettlementPage])
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -266,12 +381,25 @@ export function SettlementPage({
   }, [queryInput])
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setCompanyOverviewQuery(companyOverviewQueryInput)
+      setCompanyOverviewPage(1)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [companyOverviewQueryInput])
+
+  useEffect(() => {
     void loadSettlementPage()
   }, [loadSettlementPage])
 
   useEffect(() => {
     void loadSettlementMeta()
   }, [loadSettlementMeta, user.id])
+
+
+  useEffect(() => {
+    void loadCompanyOverview()
+  }, [loadCompanyOverview, orders, paymentSteps, user.id])
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
@@ -328,6 +456,17 @@ export function SettlementPage({
       }
     })
   }, [currentRows, orders, user.role])
+
+  const activeCompanyOverview = companyOverview ?? localCompanyOverview
+
+  const focusCompanySettlements = (registrantId: string) => {
+    setQueryInput('')
+    setFilters({ ...EMPTY_FILTERS, registrantId, status: 'waiting' })
+    setPage(1)
+    window.setTimeout(() => {
+      document.getElementById('settlement-incoming-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 50)
+  }
 
   const isRowSelected = (row: SettlementRow) => selectAllFiltered ? !excludedRows.has(row.id) : selectedRows.has(row.id)
   const currentPageAllSelected = selectableRows.length > 0 && selectableRows.every(isRowSelected)
@@ -635,7 +774,7 @@ export function SettlementPage({
       </section>
 
       <section className={`settlement-chain-grid ${user.role === 'admin' ? 'admin-settlement-grid' : ''}`}>
-        <section className="panel compact-panel fill-panel settlement-incoming-panel">
+        <section id="settlement-incoming-panel" className="panel compact-panel fill-panel settlement-incoming-panel">
           <div className="panel-header settlement-panel-header">
             <div><h2>{user.role === 'admin' ? '업체별 입금 확인' : '하위 대행사 입금 확인'}</h2><p>{user.role === 'admin' ? '등록 업체별로 작업과 예정 입금액을 나누어 확인합니다.' : '입금자·등록자·업체를 대조한 뒤 개별 또는 일괄로 확인합니다.'}</p></div>
             <button className="secondary-button small" disabled={settlementLoading} onClick={() => void refreshSettlementData()}>{settlementLoading ? '조회 중' : '새로고침'}</button>
@@ -733,10 +872,76 @@ export function SettlementPage({
         </section>}
       </section>
 
-      {batchHistory.length > 0 && <section className="panel compact-panel settlement-batch-history-panel">
+      {user.role === 'admin' && <section className="panel compact-panel admin-company-overview-panel">
+        <div className="company-overview-heading">
+          <div><h2>업체별 접수 현황</h2><p>등록 그룹별 접수·정산·구동 현황을 한눈에 확인합니다.</p></div>
+          <div className="company-overview-controls">
+            <input value={companyOverviewQueryInput} onChange={(event) => setCompanyOverviewQueryInput(event.target.value)} placeholder="그룹명 또는 아이디 검색" />
+            <select value={companyOverviewSort} onChange={(event) => { setCompanyOverviewSort(event.target.value as CompanyOverviewSort); setCompanyOverviewPage(1) }}>
+              <option value="pending_amount">입금대기 금액순</option>
+              <option value="daily_shots">일일 구동 타수순</option>
+              <option value="orders">접수 건수순</option>
+              <option value="recent">최근 접수순</option>
+            </select>
+            <button className="secondary-button small" disabled={companyOverviewLoading} onClick={() => void loadCompanyOverview()}>{companyOverviewLoading ? '조회 중' : '새로고침'}</button>
+          </div>
+        </div>
+
+        <div className="company-overview-summary">
+          <article><span>등록 업체</span><strong>{activeCompanyOverview.companyCount.toLocaleString('ko-KR')}곳</strong></article>
+          <article><span>전체 접수</span><strong>{activeCompanyOverview.totalOrders.toLocaleString('ko-KR')}건</strong></article>
+          <article className="pending"><span>입금 대기</span><strong>{formatWon(activeCompanyOverview.waitingAmount)}</strong></article>
+          <article className="confirmed"><span>입금 완료</span><strong>{formatWon(activeCompanyOverview.confirmedAmount)}</strong></article>
+          <article><span>일일 구동 타수</span><strong>{activeCompanyOverview.dailyRunningShots.toLocaleString('ko-KR')}타</strong>{activeCompanyOverview.sparkSRunningUnits > 0 && <small>스파크S {activeCompanyOverview.sparkSRunningUnits.toLocaleString('ko-KR')}건</small>}</article>
+        </div>
+
+        {companyOverviewLoading && activeCompanyOverview.companies.length === 0 ? <div className="empty-state">업체별 현황을 불러오는 중입니다.</div> : activeCompanyOverview.companies.length === 0 ? <div className="empty-state">조건에 맞는 업체가 없습니다.</div> : <div className="company-overview-grid">
+          {activeCompanyOverview.companies.map((company) => <article key={company.registrantId} className="company-overview-card">
+            <header>
+              <div className="company-overview-identity"><span>등록 그룹</span><strong>{company.groupName}</strong><small>계정 {company.username}{company.lastOrderAt ? ` · 최근 접수 ${formatDateTime(company.lastOrderAt)}` : ''}</small></div>
+              <span className={`company-overview-state ${company.waitingOrderCount > 0 ? 'waiting' : 'clear'}`}>{company.waitingOrderCount > 0 ? `입금대기 ${company.waitingOrderCount.toLocaleString('ko-KR')}건` : '정산대기 없음'}</span>
+            </header>
+
+            <div className="company-overview-metrics">
+              <div><span>전체 접수</span><strong>{company.totalOrders.toLocaleString('ko-KR')}건</strong></div>
+              <div className="pending"><span>입금 대기 금액</span><strong>{formatWon(company.waitingAmount)}</strong></div>
+              <div className="confirmed"><span>입금 완료 금액</span><strong>{formatWon(company.confirmedAmount)}</strong></div>
+              <div><span>만료</span><strong>{company.expiredCount.toLocaleString('ko-KR')}건</strong></div>
+            </div>
+
+            <div className="company-overview-running">
+              <div><span>구동중 작업</span><strong>{company.runningCount.toLocaleString('ko-KR')}건</strong></div>
+              <div><span>총 일일 구동 타수</span><strong>{company.dailyRunningShots.toLocaleString('ko-KR')}타</strong></div>
+              {company.sparkSRunningUnits > 0 && <div><span>스파크S 일일 구동</span><strong>{company.sparkSRunningUnits.toLocaleString('ko-KR')}건</strong></div>}
+            </div>
+
+            <div className="company-overview-programs">
+              <span><b>스파크</b>{company.sparkCount.toLocaleString('ko-KR')}건</span>
+              <span><b>스파크 +</b>{company.sparkPlusCount.toLocaleString('ko-KR')}건</span>
+              <span><b>스파크S</b>{company.sparkSCount.toLocaleString('ko-KR')}건</span>
+            </div>
+
+            <footer>
+              <span>입금완료 {company.confirmedOrderCount.toLocaleString('ko-KR')}건 · 만료 {company.expiredCount.toLocaleString('ko-KR')}건</span>
+              <button className="secondary-button small" disabled={company.waitingOrderCount === 0} onClick={() => focusCompanySettlements(company.registrantId)}>{company.waitingOrderCount > 0 ? '대기 정산 보기' : '정산 완료'}</button>
+            </footer>
+          </article>)}
+        </div>}
+
+        <div className="settlement-pagination company-overview-pagination">
+          <button className="secondary-button small" disabled={activeCompanyOverview.page <= 1 || companyOverviewLoading} onClick={() => setCompanyOverviewPage((current) => Math.max(1, current - 1))}>이전</button>
+          <span>{activeCompanyOverview.page.toLocaleString('ko-KR')} / {activeCompanyOverview.totalPages.toLocaleString('ko-KR')} 페이지</span>
+          <button className="secondary-button small" disabled={activeCompanyOverview.page >= activeCompanyOverview.totalPages || companyOverviewLoading} onClick={() => setCompanyOverviewPage((current) => current + 1)}>다음</button>
+        </div>
+      </section>}
+
+      {batchHistory.length > 0 && (user.role === 'admin' ? <details className="panel compact-panel settlement-batch-history-panel settlement-batch-history-collapsible">
+        <summary><div><strong>최근 일괄 입금확인 기록</strong><span>필요할 때 펼쳐서 기존 묶음 내역을 확인합니다.</span></div><span>{batchHistory.length.toLocaleString('ko-KR')}건</span></summary>
+        <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-batch-history-table"><thead><tr><th>묶음번호</th><th>입금자</th><th>건수</th><th>확인금액</th><th>확인시각</th><th>상세</th></tr></thead><tbody>{batchHistory.map((batch) => <tr key={batch.id}><td><strong>{batch.batchNumber}</strong>{batch.memo && <small>{batch.memo}</small>}</td><td>{batch.payerUsername}</td><td>{batch.itemCount.toLocaleString('ko-KR')}건</td><td><strong>{formatWon(batch.actualAmount)}</strong></td><td>{formatDateTime(batch.confirmedAt)}</td><td><button className="secondary-button small" disabled={batchDetailLoadingId === batch.id} onClick={() => void openBatchDetail(batch)}>{batchDetailLoadingId === batch.id ? '조회 중' : '포함 작업'}</button></td></tr>)}</tbody></table></div>
+      </details> : <section className="panel compact-panel settlement-batch-history-panel">
         <div className="panel-header"><div><h2>일괄 입금확인 내역</h2><p>입금자별로 처리된 정산 묶음을 확인합니다.</p></div></div>
         <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-batch-history-table"><thead><tr><th>묶음번호</th><th>입금자</th><th>건수</th><th>확인금액</th><th>확인시각</th><th>상세</th></tr></thead><tbody>{batchHistory.map((batch) => <tr key={batch.id}><td><strong>{batch.batchNumber}</strong>{batch.memo && <small>{batch.memo}</small>}</td><td>{batch.payerUsername}</td><td>{batch.itemCount.toLocaleString('ko-KR')}건</td><td><strong>{formatWon(batch.actualAmount)}</strong></td><td>{formatDateTime(batch.confirmedAt)}</td><td><button className="secondary-button small" disabled={batchDetailLoadingId === batch.id} onClick={() => void openBatchDetail(batch)}>{batchDetailLoadingId === batch.id ? '조회 중' : '포함 작업'}</button></td></tr>)}</tbody></table></div>
-      </section>}
+      </section>)}
 
       <section className="panel compact-panel fill-panel settlement-orders-panel"><div className="panel-header"><div><h2>{user.role === 'admin' ? '전체 작업 결제 상태' : '내 작업 결제 상태'}</h2><p>필요한 입금 확인이 모두 끝나면 작업이 입금완료로 변경됩니다.</p></div></div>{visibleOrders.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table"><table className="simple-table settlement-table settlement-orders-table"><thead><tr>{user.role === 'admin' && <th>등록 그룹</th>}<th>상호명</th><th>{user.role === 'admin' ? '관리자 정산액' : '접수금액'}</th><th>시작일</th><th>상태</th></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id}>{user.role === 'admin' && <td>{order.creatorGroupName || '미지정 그룹'}</td>}<td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td><strong>{formatWon(orderSettlementAmount(order))}</strong></td><td>{formatDate(order.startDate)}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}</section>
 

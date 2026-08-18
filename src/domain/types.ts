@@ -322,6 +322,42 @@ export interface SettlementBatchHistoryItem extends SettlementBatchResultItem {
   status: 'confirmed' | 'voided'
 }
 
+
+export type CompanyOverviewSort = 'pending_amount' | 'daily_shots' | 'orders' | 'recent'
+
+export interface AdminCompanyOverviewItem {
+  registrantId: string
+  username: string
+  groupName: string
+  totalOrders: number
+  waitingOrderCount: number
+  waitingAmount: number
+  confirmedOrderCount: number
+  confirmedAmount: number
+  expiredCount: number
+  runningCount: number
+  dailyRunningShots: number
+  sparkSRunningUnits: number
+  sparkCount: number
+  sparkPlusCount: number
+  sparkSCount: number
+  lastOrderAt: string
+}
+
+export interface AdminCompanyOverviewResult {
+  page: number
+  pageSize: number
+  totalPages: number
+  companyCount: number
+  totalOrders: number
+  waitingAmount: number
+  confirmedAmount: number
+  expiredCount: number
+  dailyRunningShots: number
+  sparkSRunningUnits: number
+  companies: AdminCompanyOverviewItem[]
+}
+
 export interface SettlementBatchItemDetail {
   paymentStepId: string
   orderId: string

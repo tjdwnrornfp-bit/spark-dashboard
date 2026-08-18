@@ -2267,3 +2267,352 @@ td small { margin-top: 4px; font-size: 10px; }
     text-align: left;
   }
 }
+
+/* v9.6: admin company settlement overview */
+.admin-company-overview-panel {
+  padding: 0;
+  overflow: hidden;
+}
+
+.company-overview-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px 16px;
+  border-bottom: 1px solid #edf0f4;
+}
+
+.company-overview-heading h2 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.company-overview-heading p {
+  margin: 5px 0 0;
+  color: #8a93a2;
+  font-size: 11px;
+}
+
+.company-overview-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.company-overview-controls input,
+.company-overview-controls select {
+  height: 36px;
+  border: 1px solid #dde3ec;
+  border-radius: 8px;
+  background: #fff;
+  color: #263246;
+  font-size: 12px;
+  outline: none;
+}
+
+.company-overview-controls input {
+  width: 220px;
+  padding: 0 12px;
+}
+
+.company-overview-controls select {
+  width: 150px;
+  padding: 0 30px 0 10px;
+}
+
+.company-overview-controls input:focus,
+.company-overview-controls select:focus {
+  border-color: #9ab8ee;
+  box-shadow: 0 0 0 3px rgba(47, 108, 224, 0.08);
+}
+
+.company-overview-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 22px;
+  border: 1px solid #e7ebf1;
+  border-radius: 11px;
+  background: #e7ebf1;
+  overflow: hidden;
+}
+
+.company-overview-summary article {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding: 14px 15px;
+  background: #fbfcfe;
+}
+
+.company-overview-summary span {
+  color: #8993a2;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.company-overview-summary strong {
+  overflow: hidden;
+  font-size: clamp(15px, 1.25vw, 20px);
+  letter-spacing: -0.03em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-overview-summary small {
+  color: #7d8794;
+  font-size: 9px;
+}
+
+.company-overview-summary .pending strong { color: #c97800; }
+.company-overview-summary .confirmed strong { color: #1b67df; }
+
+.company-overview-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px 22px 8px;
+}
+
+.company-overview-card {
+  min-width: 0;
+  border: 1px solid #dfe5ee;
+  border-radius: 13px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgba(31, 48, 78, 0.045);
+  overflow: hidden;
+}
+
+.company-overview-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 16px 13px;
+  background: linear-gradient(180deg, #fbfdff 0%, #f7faff 100%);
+  border-bottom: 1px solid #edf1f6;
+}
+
+.company-overview-identity {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.company-overview-identity > span {
+  color: #7c8ba2;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.company-overview-identity > strong {
+  overflow: hidden;
+  color: #132238;
+  font-size: 16px;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-overview-identity > small {
+  overflow: hidden;
+  color: #8a94a2;
+  font-size: 9px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-overview-state {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.company-overview-state.waiting {
+  color: #ad6600;
+  background: #fff1d8;
+}
+
+.company-overview-state.clear {
+  color: #16835a;
+  background: #e8f7ef;
+}
+
+.company-overview-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  padding: 13px 14px 10px;
+}
+
+.company-overview-metrics > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 11px;
+  border-radius: 9px;
+  background: #f6f8fb;
+}
+
+.company-overview-metrics span,
+.company-overview-running span {
+  color: #8a94a1;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.company-overview-metrics strong {
+  overflow: hidden;
+  color: #17263c;
+  font-size: 14px;
+  letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-overview-metrics .pending { background: #fff8ec; }
+.company-overview-metrics .pending strong { color: #c27300; }
+.company-overview-metrics .confirmed { background: #eff5ff; }
+.company-overview-metrics .confirmed strong { color: #1d65d6; }
+
+.company-overview-running {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 14px 10px;
+  border: 1px solid #e8edf4;
+  border-radius: 9px;
+  background: #e8edf4;
+  overflow: hidden;
+}
+
+.company-overview-running > div {
+  display: grid;
+  gap: 3px;
+  padding: 10px 11px;
+  background: #fff;
+}
+
+.company-overview-running strong {
+  color: #13243e;
+  font-size: 13px;
+}
+
+.company-overview-programs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 12px;
+}
+
+.company-overview-programs > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  border-radius: 7px;
+  background: #f2f5fa;
+  color: #677488;
+  font-size: 9px;
+}
+
+.company-overview-programs b {
+  color: #26364d;
+  font-weight: 800;
+}
+
+.company-overview-card > footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 11px 14px;
+  border-top: 1px solid #edf0f4;
+  background: #fcfdff;
+}
+
+.company-overview-card > footer > span {
+  overflow: hidden;
+  color: #8a94a2;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.company-overview-pagination {
+  padding: 10px 22px 18px;
+}
+
+.settlement-batch-history-collapsible {
+  padding: 0;
+  overflow: hidden;
+}
+
+.settlement-batch-history-collapsible > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 20px;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.settlement-batch-history-collapsible > summary::-webkit-details-marker { display: none; }
+
+.settlement-batch-history-collapsible > summary > div {
+  display: grid;
+  gap: 3px;
+}
+
+.settlement-batch-history-collapsible > summary strong {
+  font-size: 13px;
+}
+
+.settlement-batch-history-collapsible > summary span {
+  color: #8b95a3;
+  font-size: 10px;
+}
+
+.settlement-batch-history-collapsible[open] > summary {
+  border-bottom: 1px solid #edf0f4;
+}
+
+@media (max-width: 1220px) {
+  .company-overview-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .company-overview-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 860px) {
+  .company-overview-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .company-overview-controls { flex-wrap: wrap; }
+  .company-overview-controls input { flex: 1 1 220px; width: auto; }
+  .company-overview-controls select { flex: 1 1 150px; width: auto; }
+  .company-overview-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .company-overview-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 560px) {
+  .company-overview-heading { padding: 16px; }
+  .company-overview-summary { margin: 0 16px; grid-template-columns: 1fr 1fr; }
+  .company-overview-grid { padding: 14px 16px 6px; }
+  .company-overview-controls > * { flex: 1 1 100%; width: 100%; }
+  .company-overview-card > header { flex-direction: column; }
+  .company-overview-state { align-self: flex-start; }
+  .company-overview-running { grid-template-columns: 1fr; }
+  .company-overview-card > footer { align-items: stretch; flex-direction: column; }
+  .company-overview-card > footer button { width: 100%; }
+  .company-overview-pagination { padding: 10px 16px 16px; }
+}
