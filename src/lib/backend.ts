@@ -2,6 +2,8 @@ import type {
   AccountDraft,
   AppSettings,
   AuditLog,
+  MemberDeletionCheck,
+  MemberDeletionResult,
   MemberReviewInput,
   Notice,
   NotificationItem,
@@ -352,6 +354,54 @@ export async function restoreRemoteOrder(order: Order, reason: string): Promise<
   })
   if (error) throw error
   return mapOrder(data as Record<string, unknown>)
+}
+
+export async function checkRemoteMemberDeletion(memberId: string): Promise<MemberDeletionCheck> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_member_deletion_check_v95', { p_member_id: memberId })
+  if (error) throw error
+  const row = (data ?? {}) as Record<string, unknown>
+  return {
+    memberId: stringValue(row.member_id),
+    username: stringValue(row.username),
+    canDelete: Boolean(row.can_delete),
+    isAdminAccount: Boolean(row.is_admin_account),
+    isCurrentUser: Boolean(row.is_current_user),
+    orderCount: numberValue(row.order_count),
+    sponsoredOrderCount: numberValue(row.sponsored_order_count),
+    paymentStepCount: numberValue(row.payment_step_count),
+    childCount: numberValue(row.child_count),
+    noticeCount: numberValue(row.notice_count),
+    settlementQuoteCount: numberValue(row.settlement_quote_count),
+    settlementBatchCount: numberValue(row.settlement_batch_count),
+    reasons: Array.isArray(row.reasons) ? row.reasons.filter((value): value is string => typeof value === 'string') : [],
+  }
+}
+
+export async function deleteRemoteMemberAccount(memberId: string): Promise<MemberDeletionResult> {
+  const client = requiredClient()
+  const { data, error } = await client.functions.invoke('delete-member', { body: { memberId } })
+  if (error) {
+    let message = error.message || '계정을 삭제하지 못했습니다.'
+    const context = (error as { context?: unknown }).context
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { message?: unknown; error?: unknown }
+        if (typeof payload.message === 'string' && payload.message) message = payload.message
+        else if (typeof payload.error === 'string' && payload.error) message = payload.error
+      } catch {
+        // Keep the Supabase Functions error message when the response body is not JSON.
+      }
+    }
+    throw new Error(message)
+  }
+  if (!data || data.ok !== true) throw new Error(typeof data?.message === 'string' ? data.message : '계정을 삭제하지 못했습니다.')
+  return {
+    ok: true,
+    memberId: stringValue(data.memberId),
+    username: stringValue(data.username),
+    deletedAt: stringValue(data.deletedAt),
+  }
 }
 
 export async function reviewRemoteMember(params: Omit<MemberReviewInput, 'member'> & { memberId: string; memberUpdatedAt: string }): Promise<User> {

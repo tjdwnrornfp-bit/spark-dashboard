@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
+import { Modal } from '../components/Modal'
 import { ApprovalBadge } from '../components/StatusBadge'
-import type { MemberReviewInput, MemberRole, ProgramPriceMap, User } from '../domain/types'
+import type { MemberDeletionCheck, MemberReviewInput, MemberRole, ProgramPriceMap, User } from '../domain/types'
 import { formatDateTime } from '../lib/date'
 import { formatWon } from '../lib/money'
 import { getProgramPriceMap } from '../lib/program'
@@ -31,10 +32,12 @@ function managementLabel(member: User): string {
   return '관리자 직속'
 }
 
-export function MembersPage({ user, members, onReview }: {
+export function MembersPage({ user, members, onReview, onCheckDeletion, onDeleteMember }: {
   user: User
   members: User[]
   onReview: (params: MemberReviewInput) => Promise<void>
+  onCheckDeletion: (member: User) => Promise<MemberDeletionCheck>
+  onDeleteMember: (member: User) => Promise<void>
 }) {
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -43,6 +46,11 @@ export function MembersPage({ user, members, onReview }: {
   const [groupName, setGroupName] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteChecking, setDeleteChecking] = useState(false)
+  const [deleteCheck, setDeleteCheck] = useState<MemberDeletionCheck | null>(null)
+  const [deleteError, setDeleteError] = useState('')
+  const [deleting, setDeleting] = useState(false)
   const isAdmin = user.role === 'admin'
   const isManager = user.isOperationsManager
   const users = useMemo(
@@ -68,6 +76,9 @@ export function MembersPage({ user, members, onReview }: {
     setPrices(emptyPrices(member))
     setGroupName(member.groupName)
     setError('')
+    setDeleteOpen(false)
+    setDeleteCheck(null)
+    setDeleteError('')
   }
 
   const numericPrices = {
@@ -110,6 +121,42 @@ export function MembersPage({ user, members, onReview }: {
       setError(getErrorMessage(caught))
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openDelete = async () => {
+    if (!selected || !isAdmin || deleting) return
+    setDeleteOpen(true)
+    setDeleteChecking(true)
+    setDeleteCheck(null)
+    setDeleteError('')
+    try {
+      setDeleteCheck(await onCheckDeletion(selected))
+    } catch (caught) {
+      setDeleteError(getErrorMessage(caught))
+    } finally {
+      setDeleteChecking(false)
+    }
+  }
+
+  const confirmDelete = async () => {
+    if (!selected || !deleteCheck?.canDelete || deleting) return
+    setDeleting(true)
+    setDeleteError('')
+    try {
+      await onDeleteMember(selected)
+      setDeleteOpen(false)
+      setDeleteCheck(null)
+      setSelectedId(null)
+    } catch (caught) {
+      setDeleteError(getErrorMessage(caught))
+      try {
+        setDeleteCheck(await onCheckDeletion(selected))
+      } catch {
+        // Keep the delete error when the eligibility refresh also fails.
+      }
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -177,10 +224,34 @@ export function MembersPage({ user, members, onReview }: {
           {adminManagedMember && <p className="inline-message">관리 담당은 <strong>{selected.managerUsername || '지정된 중간관리자'}</strong>이며, 입금 계좌와 정산은 관리자에게 직접 연결됩니다. 관리자는 필요 시 직접 승인·수정할 수 있습니다.</p>}
           {isManager && <p className="inline-message">승인한 대행사의 입금 계좌와 정산은 관리자에게 직접 연결됩니다.</p>}
           {!isAdmin && !isManager && (!user.bank || !user.accountNumber || !user.accountHolder) && <p className="inline-message error">내 정보에서 입금 계좌를 먼저 등록해야 회원을 승인할 수 있습니다.</p>}
+          {isAdmin && <div className="member-danger-zone"><div><span>계정 정리</span><strong>미사용 계정 영구 삭제</strong><small>작업·정산·하위 회원 등 운영 이력이 없는 계정만 삭제할 수 있습니다. 삭제 후 같은 아이디로 다시 가입할 수 있습니다.</small></div><button className="secondary-button danger-outline" disabled={saving || deleting} onClick={() => void openDelete()}>계정 영구 삭제</button></div>}
           {error && <p className="inline-message error">{error}</p>}
           <div className="member-editor-actions"><button className="secondary-button danger-outline" disabled={saving || sponsorPending} onClick={() => void save('rejected')}>반려</button><button className="primary-button" disabled={saving || sponsorPending || (!isAdmin && !isManager && (!user.bank || !user.accountNumber || !user.accountHolder))} onClick={() => void save('approved')}>{saving ? '저장 중...' : selected.approvalStatus === 'approved' ? '수정 저장' : '승인'}</button></div>
         </div>}
       </section>
+
+      {deleteOpen && selected && <Modal
+        title="계정 영구 삭제"
+        description={`${selected.username} 계정을 삭제하기 전에 운영 이력을 확인합니다.`}
+        onClose={() => { if (!deleting) setDeleteOpen(false) }}
+        footer={<>
+          <button className="secondary-button" disabled={deleting} onClick={() => setDeleteOpen(false)}>취소</button>
+          <button className="primary-button delete-confirm-button" disabled={deleteChecking || deleting || !deleteCheck?.canDelete} onClick={() => void confirmDelete()}>{deleting ? '삭제 중...' : '영구 삭제'}</button>
+        </>}
+      >
+        <div className="member-delete-dialog">
+          {deleteChecking && <div className="delete-checking"><strong>삭제 가능 여부 확인 중</strong><p>작업, 정산, 하위 회원과 운영 이력을 확인하고 있습니다.</p></div>}
+          {!deleteChecking && deleteCheck?.canDelete && <>
+            <div className="delete-ready-card"><span>삭제 가능</span><strong>{deleteCheck.username}</strong><p>이 계정에는 보존해야 할 작업·정산·하위 회원 이력이 없습니다.</p></div>
+            <div className="delete-warning-box"><strong>삭제 후 복구할 수 없습니다.</strong><p>로그인 계정과 회원정보가 영구 삭제되며, 이후 동일한 아이디로 새 회원가입이 가능합니다.</p></div>
+          </>}
+          {!deleteChecking && deleteCheck && !deleteCheck.canDelete && <>
+            <div className="delete-blocked-card"><span>삭제 불가</span><strong>{deleteCheck.username}</strong><p>운영 기록 보존을 위해 아래 이력이 있는 계정은 영구 삭제하지 않습니다.</p></div>
+            <div className="delete-reason-list">{deleteCheck.reasons.map((reason) => <div key={reason}><span>보존 필요</span><strong>{reason}</strong></div>)}</div>
+          </>}
+          {deleteError && <p className="inline-message error">{deleteError}</p>}
+        </div>
+      </Modal>}
     </div>
   )
 }

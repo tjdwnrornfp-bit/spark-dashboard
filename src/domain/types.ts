@@ -149,6 +149,30 @@ export interface AppSettings {
   accountHolder: string
 }
 
+
+export interface MemberDeletionCheck {
+  memberId: string
+  username: string
+  canDelete: boolean
+  isAdminAccount: boolean
+  isCurrentUser: boolean
+  orderCount: number
+  sponsoredOrderCount: number
+  paymentStepCount: number
+  childCount: number
+  noticeCount: number
+  settlementQuoteCount: number
+  settlementBatchCount: number
+  reasons: string[]
+}
+
+export interface MemberDeletionResult {
+  ok: boolean
+  memberId: string
+  username: string
+  deletedAt: string
+}
+
 export interface MemberReviewInput {
   member: User
   role: MemberRole

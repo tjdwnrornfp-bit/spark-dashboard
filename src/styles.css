@@ -2108,3 +2108,162 @@ td small { margin-top: 4px; font-size: 10px; }
   .settlement-company-actions { align-items: stretch; flex-direction: column; }
   .settlement-company-actions button { width: 100%; }
 }
+
+/* v9.5: safe unused-member account cleanup */
+.member-danger-zone {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 15px 16px;
+  border: 1px solid rgba(214, 69, 69, 0.18);
+  border-radius: 8px;
+  background: rgba(214, 69, 69, 0.045);
+}
+
+.member-danger-zone > div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.member-danger-zone span {
+  color: #a33939;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.member-danger-zone strong {
+  font-size: 13px;
+}
+
+.member-danger-zone small {
+  color: #717784;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.member-danger-zone .danger-outline {
+  flex: 0 0 auto;
+  color: #b42318 !important;
+  border-color: rgba(180, 35, 24, 0.28) !important;
+  background: #fff;
+}
+
+.member-delete-dialog {
+  display: grid;
+  gap: 14px;
+}
+
+.delete-checking,
+.delete-ready-card,
+.delete-blocked-card,
+.delete-warning-box {
+  display: grid;
+  gap: 6px;
+  padding: 15px 16px;
+  border-radius: 8px;
+}
+
+.delete-checking {
+  background: #f6f7f9;
+  border: 1px solid #e4e7eb;
+}
+
+.delete-ready-card {
+  background: #f2f8f4;
+  border: 1px solid #cfe4d5;
+}
+
+.delete-blocked-card,
+.delete-warning-box {
+  background: #fff7f6;
+  border: 1px solid #efd3cf;
+}
+
+.delete-ready-card > span,
+.delete-blocked-card > span {
+  width: max-content;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.delete-ready-card > span {
+  color: #18794e;
+  background: #dff3e6;
+}
+
+.delete-blocked-card > span {
+  color: #b42318;
+  background: #fde4e1;
+}
+
+.member-delete-dialog p {
+  margin: 0;
+  color: #6d7480;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.delete-reason-list {
+  display: grid;
+  gap: 8px;
+}
+
+.delete-reason-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 13px;
+  border: 1px solid #eceef2;
+  border-radius: 7px;
+  background: #fafbfc;
+}
+
+.delete-reason-list span {
+  color: #9a5350;
+  font-size: 11px;
+}
+
+.delete-reason-list strong {
+  text-align: right;
+  font-size: 12px;
+}
+
+.delete-confirm-button {
+  border-color: #b42318 !important;
+  background: #b42318 !important;
+}
+
+.delete-confirm-button:hover:not(:disabled) {
+  background: #8f1d14 !important;
+}
+
+.delete-confirm-button:disabled {
+  opacity: .45;
+}
+
+@media (max-width: 720px) {
+  .member-danger-zone {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .member-danger-zone .danger-outline {
+    width: 100%;
+  }
+
+  .delete-reason-list > div {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .delete-reason-list strong {
+    text-align: left;
+  }
+}

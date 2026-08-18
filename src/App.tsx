@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -19,6 +19,8 @@ import {
   createRemoteNotice,
   createRemoteOrder,
   createRemoteOrdersBulk,
+  checkRemoteMemberDeletion,
+  deleteRemoteMemberAccount,
   deleteAllRemoteNotifications,
   deleteRemoteNotice,
   deleteRemoteNotification,
@@ -385,6 +387,55 @@ export default function App() {
     setLocalOrders((current) => current.map((item) => item.id === order.id ? { ...item, archivedAt: null, archivedBy: null, archiveReason: '', lockVersion: item.lockVersion + 1, updatedAt: nowIso } : item))
   }
 
+  const handleMemberDeletionCheck = async (member: User): Promise<MemberDeletionCheck> => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 계정을 삭제할 수 있습니다.')
+    if (member.role === 'admin') throw new Error('관리자 계정은 삭제할 수 없습니다.')
+    if (member.id === user.id) throw new Error('현재 로그인한 관리자 계정은 삭제할 수 없습니다.')
+    if (isSupabaseConfigured) return checkRemoteMemberDeletion(member.id)
+
+    const orderCount = localOrders.filter((order) => order.createdBy === member.id).length
+    const sponsoredOrderCount = localOrders.filter((order) => order.sponsorId === member.id).length
+    const paymentStepCount = localPaymentSteps.filter((step) => step.payerId === member.id || step.payeeId === member.id).length
+    const childCount = localMembers.filter((candidate) => candidate.sponsorId === member.id || candidate.managerId === member.id).length
+    const noticeCount = localNotices.filter((notice) => (notice as Notice & { createdBy?: string }).createdBy === member.id).length
+    const reasons: string[] = []
+    if (orderCount > 0) reasons.push(`직접 접수한 작업 ${orderCount}건`)
+    if (sponsoredOrderCount > 0) reasons.push(`추천 관계로 연결된 작업 ${sponsoredOrderCount}건`)
+    if (paymentStepCount > 0) reasons.push(`정산 참여 이력 ${paymentStepCount}건`)
+    if (childCount > 0) reasons.push(`연결된 하위 회원 ${childCount}명`)
+    if (noticeCount > 0) reasons.push(`작성한 공지 ${noticeCount}건`)
+    return {
+      memberId: member.id,
+      username: member.username,
+      canDelete: reasons.length === 0,
+      isAdminAccount: false,
+      isCurrentUser: false,
+      orderCount,
+      sponsoredOrderCount,
+      paymentStepCount,
+      childCount,
+      noticeCount,
+      settlementQuoteCount: 0,
+      settlementBatchCount: 0,
+      reasons,
+    }
+  }
+
+  const handleMemberDelete = async (member: User): Promise<void> => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 계정을 삭제할 수 있습니다.')
+    if (isSupabaseConfigured) {
+      await deleteRemoteMemberAccount(member.id)
+      setRemoteMembers((current) => current.filter((candidate) => candidate.id !== member.id))
+      setRemoteNotifications((current) => current.filter((item) => item.userId !== member.id))
+      await refreshRemote()
+      return
+    }
+    const check = await handleMemberDeletionCheck(member)
+    if (!check.canDelete) throw new Error(check.reasons.join(' · ') || '운영 이력이 있어 삭제할 수 없습니다.')
+    setLocalMembers((current) => current.filter((candidate) => candidate.id !== member.id))
+    setLocalNotifications((current) => current.filter((item) => item.userId !== member.id))
+  }
+
   const handleMemberReview = async (params: MemberReviewInput) => {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (isSupabaseConfigured) {
@@ -502,7 +553,7 @@ export default function App() {
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
-    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} />}
+    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
     {page === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}
