@@ -74,6 +74,15 @@ function excelDate(value: unknown): string {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
+function isoDateToExcelSerial(value: string): number | string {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (!match) return value
+  const year = Number(match[1])
+  const month = Number(match[2])
+  const day = Number(match[3])
+  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000) + 25_569
+}
+
 function excelDisplayWidth(value: string | number | null | undefined): number {
   const text = String(value ?? '')
   return Array.from(text).reduce((width, char) => width + (/[^\x00-\xff]/.test(char) ? 2 : 1), 0)
@@ -229,38 +238,41 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   const downloadExcel = () => {
     const target = sourceOrders.filter((order) => selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     if (target.length === 0) return window.alert('다운로드할 작업을 선택해 주세요.')
-    const unitPriceHeader = `적용단가(원/${quantityUnit})`
     const rows: Array<Array<string | number>> = [
-      ['등록자', '그룹명', '프로그램', unitPriceHeader, '상호명', '대표키워드', '플레이스URL', 'MID값', '일일수량', '구동일수', '시작일', '종료일', '상태'],
+      ['등록자', '그룹명', '프로그램', '대표키워드', '미드값', '상호명', '플레이스URL', '적용단가', '일일수량', '시작날짜', '종료날짜', '구동일 수', '상태'],
       ...target.map((order) => [
         order.creatorUsername,
         order.creatorGroupName || '-',
         labelForProgram(order.programType ?? 'spark'),
-        order.pricePerShot,
-        order.storeName,
         order.keyword,
-        order.placeUrl,
         order.mid,
+        order.storeName,
+        order.placeUrl,
+        order.pricePerShot,
         order.dailyShots,
+        isoDateToExcelSerial(order.startDate),
+        isoDateToExcelSerial(order.endDate),
         order.operationDays,
-        order.startDate,
-        order.endDate,
         order.status,
       ]),
     ]
     const worksheet = utils.aoa_to_sheet(rows)
     worksheet['!cols'] = autoFitExcelColumns(rows, {
-      minWidths: [10, 10, 9, 12, 12, 12, 24, 12, 10, 10, 12, 12, 10],
-      maxWidths: [18, 20, 14, 16, 26, 28, 42, 24, 14, 12, 14, 14, 12],
+      minWidths: [10, 10, 9, 12, 12, 12, 22, 9, 9, 11, 11, 10, 9],
+      maxWidths: [18, 20, 14, 28, 20, 26, 40, 14, 14, 13, 13, 12, 12],
     })
     worksheet['!autofilter'] = { ref: `A1:M${rows.length}` }
     if (rows.length > 1) {
       for (let rowIndex = 2; rowIndex <= rows.length; rowIndex += 1) {
-        const priceCell = worksheet[`D${rowIndex}`]
+        const priceCell = worksheet[`H${rowIndex}`]
         const quantityCell = worksheet[`I${rowIndex}`]
-        const daysCell = worksheet[`J${rowIndex}`]
+        const startDateCell = worksheet[`J${rowIndex}`]
+        const endDateCell = worksheet[`K${rowIndex}`]
+        const daysCell = worksheet[`L${rowIndex}`]
         if (priceCell) priceCell.z = '#,##0'
         if (quantityCell) quantityCell.z = '#,##0'
+        if (startDateCell) startDateCell.z = 'yyyy-mm-dd'
+        if (endDateCell) endDateCell.z = 'yyyy-mm-dd'
         if (daysCell) daysCell.z = '0'
       }
     }
