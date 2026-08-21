@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react'
+import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { ApprovalBadge } from '../components/StatusBadge'
 import type { MemberDeletionCheck, MemberReviewInput, MemberRole, ProgramPriceMap, User } from '../domain/types'
 import { formatDateTime } from '../lib/date'
 import { formatWon } from '../lib/money'
 import { getProgramPriceMap } from '../lib/program'
-import { formatPhoneNumber } from '../lib/auth'
+import { formatPhoneNumber, validatePassword } from '../lib/auth'
 import { PageHeader } from './DashboardPage'
 
 function getErrorMessage(error: unknown): string {
@@ -32,12 +33,20 @@ function managementLabel(member: User): string {
   return '관리자 직속'
 }
 
-export function MembersPage({ user, members, onReview, onCheckDeletion, onDeleteMember }: {
+function generateTemporaryPassword(): string {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789'
+  const random = new Uint8Array(12)
+  crypto.getRandomValues(random)
+  return `Sp!${Array.from(random, (value) => alphabet[value % alphabet.length]).join('')}`
+}
+
+export function MembersPage({ user, members, onReview, onCheckDeletion, onDeleteMember, onResetPassword }: {
   user: User
   members: User[]
   onReview: (params: MemberReviewInput) => Promise<void>
   onCheckDeletion: (member: User) => Promise<MemberDeletionCheck>
   onDeleteMember: (member: User) => Promise<void>
+  onResetPassword: (member: User, newPassword: string) => Promise<void>
 }) {
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -51,6 +60,14 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
   const [deleteCheck, setDeleteCheck] = useState<MemberDeletionCheck | null>(null)
   const [deleteError, setDeleteError] = useState('')
   const [deleting, setDeleting] = useState(false)
+  const [passwordResetOpen, setPasswordResetOpen] = useState(false)
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
+  const [passwordVisible, setPasswordVisible] = useState(false)
+  const [passwordResetting, setPasswordResetting] = useState(false)
+  const [passwordResetComplete, setPasswordResetComplete] = useState(false)
+  const [passwordResetError, setPasswordResetError] = useState('')
+  const [passwordCopied, setPasswordCopied] = useState(false)
   const isAdmin = user.role === 'admin'
   const isManager = user.isOperationsManager
   const users = useMemo(
@@ -79,6 +96,9 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
     setDeleteOpen(false)
     setDeleteCheck(null)
     setDeleteError('')
+    setPasswordResetOpen(false)
+    setPasswordResetComplete(false)
+    setPasswordResetError('')
   }
 
   const numericPrices = {
@@ -160,6 +180,71 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
     }
   }
 
+  const openPasswordReset = () => {
+    if (!selected || !isAdmin) return
+    setNewPassword('')
+    setNewPasswordConfirm('')
+    setPasswordVisible(false)
+    setPasswordResetComplete(false)
+    setPasswordResetError('')
+    setPasswordCopied(false)
+    setPasswordResetOpen(true)
+  }
+
+  const closePasswordReset = () => {
+    if (passwordResetting) return
+    setPasswordResetOpen(false)
+    setNewPassword('')
+    setNewPasswordConfirm('')
+    setPasswordVisible(false)
+    setPasswordResetComplete(false)
+    setPasswordResetError('')
+    setPasswordCopied(false)
+  }
+
+  const makeTemporaryPassword = () => {
+    const temporaryPassword = generateTemporaryPassword()
+    setNewPassword(temporaryPassword)
+    setNewPasswordConfirm(temporaryPassword)
+    setPasswordVisible(true)
+    setPasswordResetComplete(false)
+    setPasswordResetError('')
+    setPasswordCopied(false)
+  }
+
+  const resetPassword = async () => {
+    if (!selected || passwordResetting) return
+    const validation = validatePassword(newPassword)
+    if (validation) {
+      setPasswordResetError(validation)
+      return
+    }
+    if (newPassword !== newPasswordConfirm) {
+      setPasswordResetError('새 비밀번호 확인이 일치하지 않습니다.')
+      return
+    }
+    setPasswordResetting(true)
+    setPasswordResetError('')
+    try {
+      await onResetPassword(selected, newPassword)
+      setPasswordVisible(true)
+      setPasswordResetComplete(true)
+    } catch (caught) {
+      setPasswordResetError(getErrorMessage(caught))
+    } finally {
+      setPasswordResetting(false)
+    }
+  }
+
+  const copyResetPassword = async () => {
+    try {
+      await navigator.clipboard.writeText(newPassword)
+      setPasswordCopied(true)
+    } catch {
+      setPasswordResetError('클립보드에 복사하지 못했습니다. 비밀번호를 직접 선택해 복사해 주세요.')
+    }
+  }
+
   const counts = {
     all: users.length,
     pending: users.filter((member) => member.approvalStatus === 'pending').length,
@@ -224,6 +309,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
           {adminManagedMember && <p className="inline-message">관리 담당은 <strong>{selected.managerUsername || '지정된 중간관리자'}</strong>이며, 입금 계좌와 정산은 관리자에게 직접 연결됩니다. 관리자는 필요 시 직접 승인·수정할 수 있습니다.</p>}
           {isManager && <p className="inline-message">승인한 대행사의 입금 계좌와 정산은 관리자에게 직접 연결됩니다.</p>}
           {!isAdmin && !isManager && (!user.bank || !user.accountNumber || !user.accountHolder) && <p className="inline-message error">내 정보에서 입금 계좌를 먼저 등록해야 회원을 승인할 수 있습니다.</p>}
+          {isAdmin && <div className="member-security-zone"><div><span>로그인 보안</span><strong>회원 비밀번호 재설정</strong><small>현재 비밀번호는 확인할 수 없습니다. 새 비밀번호를 직접 입력하거나 임시 비밀번호를 생성해 전달하세요.</small></div><button className="secondary-button" disabled={saving || passwordResetting} onClick={openPasswordReset}><Icon name="lock" />비밀번호 재설정</button></div>}
           {isAdmin && <div className="member-danger-zone"><div><span>계정 정리</span><strong>미사용 계정 영구 삭제</strong><small>작업·정산·하위 회원 등 운영 이력이 없는 계정만 삭제할 수 있습니다. 삭제 후 같은 아이디로 다시 가입할 수 있습니다.</small></div><button className="secondary-button danger-outline" disabled={saving || deleting} onClick={() => void openDelete()}>계정 영구 삭제</button></div>}
           {error && <p className="inline-message error">{error}</p>}
           <div className="member-editor-actions"><button className="secondary-button danger-outline" disabled={saving || sponsorPending} onClick={() => void save('rejected')}>반려</button><button className="primary-button" disabled={saving || sponsorPending || (!isAdmin && !isManager && (!user.bank || !user.accountNumber || !user.accountHolder))} onClick={() => void save('approved')}>{saving ? '저장 중...' : selected.approvalStatus === 'approved' ? '수정 저장' : '승인'}</button></div>
@@ -250,6 +336,29 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
             <div className="delete-reason-list">{deleteCheck.reasons.map((reason) => <div key={reason}><span>보존 필요</span><strong>{reason}</strong></div>)}</div>
           </>}
           {deleteError && <p className="inline-message error">{deleteError}</p>}
+        </div>
+      </Modal>}
+
+      {passwordResetOpen && selected && <Modal
+        title="비밀번호 재설정"
+        description={`${selected.username} 계정의 기존 비밀번호는 조회하지 않고 새 비밀번호로 교체합니다.`}
+        onClose={closePasswordReset}
+        footer={passwordResetComplete
+          ? <button className="primary-button" onClick={closePasswordReset}>확인</button>
+          : <><button className="secondary-button" disabled={passwordResetting} onClick={closePasswordReset}>취소</button><button className="primary-button" disabled={passwordResetting} onClick={() => void resetPassword()}>{passwordResetting ? '재설정 중...' : '비밀번호 변경'}</button></>}
+      >
+        <div className="member-password-reset-dialog">
+          {!passwordResetComplete ? <>
+            <div className="password-reset-target"><span>대상 계정</span><strong>{selected.username}</strong></div>
+            <button className="secondary-button temporary-password-button" type="button" onClick={makeTemporaryPassword}><Icon name="refresh" />임시 비밀번호 생성</button>
+            <label><span>새 비밀번호</span><div className="password-reset-input"><input type={passwordVisible ? 'text' : 'password'} autoComplete="new-password" value={newPassword} onChange={(event) => { setNewPassword(event.target.value); setPasswordResetError(''); setPasswordCopied(false) }} /><button type="button" onClick={() => setPasswordVisible((current) => !current)}>{passwordVisible ? '숨기기' : '보기'}</button></div></label>
+            <label><span>새 비밀번호 확인</span><input type={passwordVisible ? 'text' : 'password'} autoComplete="new-password" value={newPasswordConfirm} onChange={(event) => { setNewPasswordConfirm(event.target.value); setPasswordResetError('') }} /></label>
+            <p className="password-reset-note">비밀번호는 4~72자로 입력합니다. 변경 작업만 감사기록에 남고 비밀번호 원문은 저장되지 않습니다.</p>
+          </> : <>
+            <div className="password-reset-success"><Icon name="check" size={24} /><div><strong>비밀번호가 변경되었습니다.</strong><p>아래 비밀번호는 이 창을 닫으면 다시 확인할 수 없습니다.</p></div></div>
+            <div className="reset-password-result"><code>{newPassword}</code><button className="secondary-button small" onClick={() => void copyResetPassword()}><Icon name="copy" />{passwordCopied ? '복사됨' : '복사'}</button></div>
+          </>}
+          {passwordResetError && <p className="inline-message error">{passwordResetError}</p>}
         </div>
       </Modal>}
     </div>

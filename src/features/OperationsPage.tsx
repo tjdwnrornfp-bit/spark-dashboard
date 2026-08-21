@@ -25,6 +25,7 @@ const ACTION_LABELS: Record<string, string> = {
   'order.updated': '작업 수정',
   'member.created': '회원 신청',
   'member.updated': '회원 변경',
+  'member.password_reset': '비밀번호 재설정',
   'payment.confirmed': '입금 확인',
   'system.migration': 'DB 업데이트',
 }

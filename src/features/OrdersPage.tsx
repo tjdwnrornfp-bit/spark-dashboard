@@ -7,10 +7,12 @@ import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
 import type { AppSettings, Order, OrderDraft, OrderStatus, ProgramType, User } from '../domain/types'
+import { downloadAdminOrdersExcel } from '../lib/adminExcel'
 import { calculateOperationDates, daysRemaining, earliestOrderStartDate, formatDate, isIsoDate, todayInSeoul } from '../lib/date'
 import { calculateAmount, formatWon } from '../lib/money'
 import { allowedOrderStatuses, extractMid, STATUS_ORDER, validateDraft } from '../lib/order'
 import { getUserProgramPrice, labelForProgram, programMeta, unitLabelForProgram, unitPriceLabelForProgram } from '../lib/program'
+import { AdminOrdersExportModal } from './AdminOrdersExportModal'
 import { PageHeader } from './DashboardPage'
 
 function emptyDraft(programType: ProgramType, now = new Date()): OrderDraft {
@@ -18,12 +20,6 @@ function emptyDraft(programType: ProgramType, now = new Date()): OrderDraft {
 }
 
 const BULK_HEADERS = ['상호명', '대표키워드', '플레이스URL', '일일수량', '구동일수', '시작일', '메모']
-
-const ADMIN_EXCEL_PROGRAM_LABELS: Record<ProgramType, string> = {
-  spark: '스파크',
-  spark_plus: '스파크+',
-  spark_s: '스파크s',
-}
 
 interface Preview {
   draft: OrderDraft
@@ -80,15 +76,6 @@ function excelDate(value: unknown): string {
   return `${match[1]}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`
 }
 
-function isoDateToExcelSerial(value: string): number | string {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-  if (!match) return value
-  const year = Number(match[1])
-  const month = Number(match[2])
-  const day = Number(match[3])
-  return Math.floor(Date.UTC(year, month - 1, day) / 86_400_000) + 25_569
-}
-
 function excelDisplayWidth(value: string | number | null | undefined): number {
   const text = String(value ?? '')
   return Array.from(text).reduce((width, char) => width + (/[^\x00-\xff]/.test(char) ? 2 : 1), 0)
@@ -135,6 +122,7 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   const [bulkDrafts, setBulkDrafts] = useState<OrderDraft[]>([])
   const [bulkErrors, setBulkErrors] = useState<string[]>([])
   const [bulkSubmitting, setBulkSubmitting] = useState(false)
+  const [integratedExportOpen, setIntegratedExportOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const minimumStartDate = earliestOrderStartDate(now)
   const programLabel = labelForProgram(programType)
@@ -244,47 +232,11 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   const downloadExcel = () => {
     const target = sourceOrders.filter((order) => selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     if (target.length === 0) return window.alert('다운로드할 작업을 선택해 주세요.')
-    const rows: Array<Array<string | number>> = [
-      ['등록자', '그룹명', '프로그램', '대표키워드', '미드값', '상호명', '플레이스URL', '적용단가', '일일수량', '시작날짜', '종료날짜', '구동일 수', '상태'],
-      ...target.map((order) => [
-        order.creatorUsername,
-        order.creatorGroupName || '-',
-        ADMIN_EXCEL_PROGRAM_LABELS[order.programType ?? 'spark'],
-        order.keyword,
-        order.mid,
-        order.storeName,
-        order.placeUrl,
-        order.pricePerShot,
-        order.dailyShots,
-        isoDateToExcelSerial(order.startDate),
-        isoDateToExcelSerial(order.endDate),
-        order.operationDays,
-        order.status,
-      ]),
-    ]
-    const worksheet = utils.aoa_to_sheet(rows)
-    worksheet['!cols'] = autoFitExcelColumns(rows, {
-      minWidths: [10, 10, 9, 12, 12, 12, 22, 9, 9, 11, 11, 10, 9],
-      maxWidths: [18, 20, 14, 28, 20, 26, 40, 14, 14, 13, 13, 12, 12],
+    downloadAdminOrdersExcel({
+      orders: target,
+      fileName: `${meta.orderPrefix.toLowerCase()}-orders-${todayInSeoul(now)}.xlsx`,
+      sheetName: meta.sheetName,
     })
-    worksheet['!autofilter'] = { ref: `A1:M${rows.length}` }
-    if (rows.length > 1) {
-      for (let rowIndex = 2; rowIndex <= rows.length; rowIndex += 1) {
-        const priceCell = worksheet[`H${rowIndex}`]
-        const quantityCell = worksheet[`I${rowIndex}`]
-        const startDateCell = worksheet[`J${rowIndex}`]
-        const endDateCell = worksheet[`K${rowIndex}`]
-        const daysCell = worksheet[`L${rowIndex}`]
-        if (priceCell) priceCell.z = '#,##0'
-        if (quantityCell) quantityCell.z = '#,##0'
-        if (startDateCell) startDateCell.z = 'yyyy-mm-dd'
-        if (endDateCell) endDateCell.z = 'yyyy-mm-dd'
-        if (daysCell) daysCell.z = '0'
-      }
-    }
-    const workbook = utils.book_new()
-    utils.book_append_sheet(workbook, worksheet, meta.sheetName)
-    writeFileXLSX(workbook, `${meta.orderPrefix.toLowerCase()}-orders-${todayInSeoul(now)}.xlsx`, { compression: true, cellStyles: true })
   }
 
   const downloadBulkTemplate = () => {
@@ -374,13 +326,14 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
 
       <section className="panel orders-panel fill-panel">
         <div className="archive-view-tabs"><button className={archiveView === 'active' ? 'active' : ''} onClick={() => { setArchiveView('active'); setSelectedIds(new Set()) }}>운영 작업</button><button className={archiveView === 'archived' ? 'active' : ''} onClick={() => { setArchiveView('archived'); setSelectedIds(new Set()) }}>보관함 <span>{sourceOrders.filter((order) => order.archivedAt && (user.role === 'admin' || order.createdBy === user.id)).length}</span></button></div>
-        <div className="order-toolbar"><div className="filter-tabs">{(['전체', ...STATUS_ORDER] as const).map((status) => <button key={status} className={filter === status ? 'active' : ''} onClick={() => setFilter(status)}>{status}<span>{counts[status]}</span></button>)}</div><div className="toolbar-actions"><label className="search-box"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="등록자, 추천인, 그룹명, 상호명, MID 검색" /></label>{user.role === 'admin' && <button className="secondary-button small" onClick={downloadExcel}><Icon name="download" />엑셀</button>}</div></div>
+        <div className="order-toolbar"><div className="filter-tabs">{(['전체', ...STATUS_ORDER] as const).map((status) => <button key={status} className={filter === status ? 'active' : ''} onClick={() => setFilter(status)}>{status}<span>{counts[status]}</span></button>)}</div><div className="toolbar-actions"><label className="search-box"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="등록자, 추천인, 그룹명, 상호명, MID 검색" /></label>{user.role === 'admin' && <><button className="secondary-button small" onClick={downloadExcel}><Icon name="download" />선택 엑셀</button><button className="primary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></>}</div></div>
         {visible.length === 0 ? <div className="empty-state fill-empty-state">조건에 맞는 작업이 없습니다.</div> : <>
           <div className="desktop-table"><table className="orders-table"><thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>추천인</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th><th>MID</th><th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{archiveView === 'archived' && <th>보관 사유</th>}{showProgress && <th>오늘 진행</th>}<th>관리</th></tr></thead><tbody>{visible.map((order, index) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <tr key={order.id}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} onChange={() => setSelectedIds((current) => { const next = new Set(current); next.has(order.id) ? next.delete(order.id) : next.add(order.id); return next })} /></td>}<td>{index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, now)}</td>{user.role === 'admin' && <><td>{order.creatorUsername}</td><td>{order.sponsorUsername || '관리자 직속'}</td><td>{order.creatorGroupName || '-'}</td></>}<td><strong>{order.storeName}</strong></td><td><a href={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td><td>{order.mid}</td><td>{order.keyword}</td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</td><td><StatusBadge status={order.status} /></td>{archiveView === 'archived' && <td>{order.archiveReason || '-'}</td>}{showProgress && <td>{order.status === '구동중' ? <ProgressGauge order={order} now={now} compact /> : <span className="muted">-</span>}</td>}<td><div className="table-action-stack">{user.role === 'admin' && !order.archivedAt && <select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}{!canArchive && !canRestore && <span className="muted">-</span>}</div></td></tr>})}</tbody></table></div>
           <div className="mobile-order-list">{visible.map((order) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <article key={order.id} className="mobile-order-card"><div><strong>{order.storeName}</strong><StatusBadge status={order.status} /></div><p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{order.archivedAt && <div><dt>보관 사유</dt><dd>{order.archiveReason || '-'}</dd></div>}{user.role === 'admin' && <><div><dt>추천인</dt><dd>{order.sponsorUsername || '관리자 직속'}</dd></div><div><dt>그룹명</dt><dd>{order.creatorGroupName || '-'}</dd></div></>}</dl>{order.status === '구동중' && showProgress && <ProgressGauge order={order} now={now} />}{user.role === 'admin' && !order.archivedAt && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}</article>})}</div>
         </>}
       </section>
 
+      {integratedExportOpen && user.role === 'admin' && <AdminOrdersExportModal orders={orders} now={now} onClose={() => setIntegratedExportOpen(false)} />}
       {preview && <Modal title="접수 내용 확인" description="금액과 기간을 확인해 주세요." onClose={() => setPreview(null)} footer={<><button className="secondary-button" onClick={() => setPreview(null)}>수정</button><button className="primary-button" disabled={submitting} onClick={() => void submitOrder()}>{submitting ? '접수 중...' : '접수 완료'}</button></>}><div className="preview-grid"><Summary label="프로그램" value={programLabel} /><Summary label="상호명" value={preview.draft.storeName} /><Summary label="MID" value={preview.mid} /><Summary label="대표 키워드" value={preview.draft.keyword} /><Summary label="일일 수량" value={`${Number(preview.draft.dailyShots).toLocaleString('ko-KR')}${quantityUnit}`} /><Summary label="구동 기간" value={`${preview.startDate} ~ ${preview.endDate}`} wide /><Summary label={unitPriceLabel} value={formatWon(unitPrice)} /><Summary label="공급가액" value={formatWon(preview.supplyAmount)} /><Summary label="부가세" value={formatWon(preview.vatAmount)} /><Summary label="최종 결제금액" value={formatWon(preview.totalAmount)} strong /></div></Modal>}
       {createdOrder && <Modal title="접수가 완료되었습니다." onClose={() => setCreatedOrder(null)} footer={<button className="primary-button" onClick={() => setCreatedOrder(null)}>확인</button>}><div className="success-box"><Icon name="check" size={24} /><div><strong>{createdOrder.storeName}</strong><p>{programLabel} 작업이 입금대기 상태로 접수되었습니다.</p></div></div></Modal>}
       {bulkDrafts.length > 0 && <Modal title="대량 작업 접수 확인" description="검증 오류가 없을 때 전체 작업이 한 번에 접수됩니다." onClose={() => { setBulkDrafts([]); setBulkErrors([]) }} footer={<><button className="secondary-button" onClick={() => { setBulkDrafts([]); setBulkErrors([]) }}>취소</button><button className="primary-button" disabled={bulkSubmitting || bulkErrors.length > 0} onClick={() => void submitBulk()}>{bulkSubmitting ? '접수 중...' : `${bulkDrafts.length}건 접수`}</button></>}><div className="bulk-preview-summary"><div><span>작업 수</span><strong>{bulkDrafts.length.toLocaleString('ko-KR')}건</strong></div><div><span>총 결제금액</span><strong>{formatWon(bulkAmount)}</strong></div></div>{bulkErrors.length > 0 ? <div className="bulk-error-list"><strong>수정이 필요한 항목 {bulkErrors.length}개</strong>{bulkErrors.slice(0, 20).map((message) => <p key={message}>{message}</p>)}{bulkErrors.length > 20 && <p>외 {bulkErrors.length - 20}개</p>}</div> : <div className="success-notice">모든 행의 URL, MID, 수량, 기간과 시작일 검증을 통과했습니다.</div>}</Modal>}

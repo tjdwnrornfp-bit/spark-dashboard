@@ -173,6 +173,13 @@ export interface MemberDeletionResult {
   deletedAt: string
 }
 
+export interface MemberPasswordResetResult {
+  ok: boolean
+  memberId: string
+  username: string
+  resetAt: string
+}
+
 export interface MemberReviewInput {
   member: User
   role: MemberRole

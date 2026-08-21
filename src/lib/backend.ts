@@ -6,6 +6,7 @@ import type {
   AuditLog,
   MemberDeletionCheck,
   MemberDeletionResult,
+  MemberPasswordResetResult,
   MemberReviewInput,
   Notice,
   NotificationItem,
@@ -403,6 +404,32 @@ export async function deleteRemoteMemberAccount(memberId: string): Promise<Membe
     memberId: stringValue(data.memberId),
     username: stringValue(data.username),
     deletedAt: stringValue(data.deletedAt),
+  }
+}
+
+export async function resetRemoteMemberPassword(memberId: string, newPassword: string): Promise<MemberPasswordResetResult> {
+  const client = requiredClient()
+  const { data, error } = await client.functions.invoke('reset-member-password', { body: { memberId, newPassword } })
+  if (error) {
+    let message = error.message || '비밀번호를 재설정하지 못했습니다.'
+    const context = (error as { context?: unknown }).context
+    if (context instanceof Response) {
+      try {
+        const payload = await context.clone().json() as { message?: unknown; error?: unknown }
+        if (typeof payload.message === 'string' && payload.message) message = payload.message
+        else if (typeof payload.error === 'string' && payload.error) message = payload.error
+      } catch {
+        // Keep the Supabase Functions error message when the response body is not JSON.
+      }
+    }
+    throw new Error(message)
+  }
+  if (!data || data.ok !== true) throw new Error(typeof data?.message === 'string' ? data.message : '비밀번호를 재설정하지 못했습니다.')
+  return {
+    ok: true,
+    memberId: stringValue(data.memberId),
+    username: stringValue(data.username),
+    resetAt: stringValue(data.resetAt),
   }
 }
 

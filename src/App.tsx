@@ -28,13 +28,14 @@ import {
   fetchRemoteSnapshot,
   markAllRemoteNotificationsRead,
   markRemoteNotificationRead,
+  resetRemoteMemberPassword,
   restoreRemoteOrder,
   reviewRemoteMember,
   saveRemoteAccount,
   saveRemoteSettings,
   setRemoteOrderStatus,
 } from './lib/backend'
-import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail } from './lib/auth'
+import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail, validatePassword } from './lib/auth'
 import { calculateAmount } from './lib/money'
 import { applyScheduledTransitions, createOrder, extractMid, transitionOrder } from './lib/order'
 import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, PROGRAM_PAGE_MAP } from './lib/program'
@@ -436,6 +437,21 @@ export default function App() {
     setLocalNotifications((current) => current.filter((item) => item.userId !== member.id))
   }
 
+  const handleMemberPasswordReset = async (member: User, newPassword: string): Promise<void> => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 회원 비밀번호를 재설정할 수 있습니다.')
+    if (member.role === 'admin') throw new Error('관리자 계정은 내 정보에서 현재 비밀번호를 확인한 뒤 변경해 주세요.')
+    const validation = validatePassword(newPassword)
+    if (validation) throw new Error(validation)
+    if (isSupabaseConfigured) {
+      await resetRemoteMemberPassword(member.id, newPassword)
+      return
+    }
+    const passwordHash = await hashPassword(newPassword)
+    setLocalMembers((current) => current.map((candidate) => candidate.id === member.id
+      ? { ...candidate, passwordHash, updatedAt: new Date().toISOString() }
+      : candidate))
+  }
+
   const handleMemberReview = async (params: MemberReviewInput) => {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (isSupabaseConfigured) {
@@ -553,7 +569,7 @@ export default function App() {
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
-    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} />}
+    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
     {page === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}
