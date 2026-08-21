@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -28,12 +28,14 @@ import {
   fetchRemoteSnapshot,
   markAllRemoteNotificationsRead,
   markRemoteNotificationRead,
+  previewRemoteOrderProgramTransfer,
   resetRemoteMemberPassword,
   restoreRemoteOrder,
   reviewRemoteMember,
   saveRemoteAccount,
   saveRemoteSettings,
   setRemoteOrderStatus,
+  transferRemoteOrderProgram,
 } from './lib/backend'
 import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail, validatePassword } from './lib/auth'
 import { calculateAmount } from './lib/money'
@@ -92,6 +94,65 @@ function buildLocalPaymentSteps(order: Order, members: User[]): PaymentStep[] {
     stepOrder += 1
   }
   return steps
+}
+
+function localProgramTransferPreview(order: Order, targetProgram: ProgramType, members: User[], paymentSteps: PaymentStep[]): ProgramTransferPreview {
+  const creator = members.find((member) => member.id === order.createdBy)
+  const targetPrice = creator ? getUserProgramPrice(creator, targetProgram) : 0
+  const nextAmount = calculateAmount(order.dailyShots, order.operationDays, targetPrice)
+  const orderSteps = paymentSteps.filter((step) => step.orderDbId === (order.dbId ?? order.id))
+  const confirmedSteps = orderSteps.filter((step) => step.confirmedAt)
+  const targetOrder = { ...order, programType: targetProgram, pricePerShot: targetPrice, ...nextAmount }
+  const targetSteps = creator && targetPrice > 0 ? buildLocalPaymentSteps(targetOrder, members) : []
+  let blockedReason = ''
+
+  if (order.archivedAt) blockedReason = '보관된 작업은 복원한 뒤 프로그램을 변경해 주세요.'
+  else if (order.programType === targetProgram) blockedReason = '현재 프로그램과 변경 대상이 같습니다.'
+  else if (!creator || creator.approvalStatus !== 'approved' || !creator.active || targetPrice <= 0) blockedReason = '등록자의 변경 대상 프로그램 현재 승인 단가가 0원이거나 설정되지 않았습니다.'
+  else if (orderSteps.length === 0 || targetSteps.length === 0) blockedReason = '안전하게 재구성할 정산 체인을 찾을 수 없습니다.'
+  else if (confirmedSteps.length > 0 && nextAmount.totalAmount < order.totalAmount) blockedReason = '확인된 정산이 있어 차감 또는 환불이 필요한 하향 변경은 자동 처리할 수 없습니다.'
+  else if (confirmedSteps.length > 0 && targetSteps.some((targetStep) => {
+    const paid = confirmedSteps.filter((step) => step.payerId === targetStep.payerId && step.payeeId === targetStep.payeeId)
+    return paid.reduce((sum, step) => sum + step.supplyAmount, 0) > targetStep.supplyAmount
+      || paid.reduce((sum, step) => sum + step.vatAmount, 0) > targetStep.vatAmount
+  })) blockedReason = '정산 참여자 중 과납이 발생해 차감 또는 환불을 별도로 처리해야 합니다.'
+
+  const needsPayment = confirmedSteps.length === 0 || targetSteps.some((targetStep) => {
+    const paidTotal = confirmedSteps
+      .filter((step) => step.payerId === targetStep.payerId && step.payeeId === targetStep.payeeId)
+      .reduce((sum, step) => sum + step.totalAmount, 0)
+    return targetStep.totalAmount > paidTotal
+  })
+  const afterStatus = order.status === '입금완료' && needsPayment ? '입금대기' : order.status
+  const settlementMode = confirmedSteps.length > 0 ? 'adjustment' : 'rebuild'
+
+  return {
+    orderDbId: order.dbId ?? order.id,
+    orderNumber: order.id,
+    currentStatus: order.status,
+    afterStatus,
+    beforeProgram: order.programType,
+    afterProgram: targetProgram,
+    beforeUnitPrice: order.pricePerShot,
+    afterUnitPrice: targetPrice,
+    beforeSupplyAmount: order.supplyAmount,
+    afterSupplyAmount: nextAmount.supplyAmount,
+    beforeVatAmount: order.vatAmount,
+    afterVatAmount: nextAmount.vatAmount,
+    beforeTotalAmount: order.totalAmount,
+    afterTotalAmount: nextAmount.totalAmount,
+    difference: nextAmount.totalAmount - order.totalAmount,
+    confirmedPaymentCount: confirmedSteps.length,
+    pendingPaymentCount: orderSteps.length - confirmedSteps.length,
+    settlementMode,
+    settlementImpact: settlementMode === 'rebuild'
+      ? '확인된 입금이 없어 기존 미확인 단계를 대상 프로그램 현재 단가 기준으로 모두 다시 만듭니다.'
+      : '확인된 금액과 배치 이력은 유지하고, 참여자별 새 목표 금액에서 확인액을 뺀 잔액만 보정 단계로 추가합니다.',
+    keepsOperationRunning: order.status === '구동중',
+    expectedVersion: order.lockVersion,
+    canTransfer: !blockedReason,
+    blockedReason,
+  }
 }
 
 export default function App() {
@@ -360,6 +421,76 @@ export default function App() {
     setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), userId: order.createdBy, role: 'all', title: status === '입금완료' ? '입금 확인 완료' : '작업 상태 변경', message: status === '입금완료' ? `관리자가 ${order.storeName} 작업 입금을 확인했습니다.` : `${order.storeName} 작업 상태가 ${status}(으)로 변경되었습니다.`, read: false, orderId: order.id }, ...current])
   }
 
+  const handleProgramTransferPreview = useCallback(async (order: Order, targetProgram: ProgramType): Promise<ProgramTransferPreview> => {
+    if (isSupabaseConfigured) return previewRemoteOrderProgramTransfer(order, targetProgram)
+    return localProgramTransferPreview(order, targetProgram, localMembers, localPaymentSteps)
+  }, [localMembers, localPaymentSteps])
+
+  const handleProgramTransfer = async (order: Order, targetProgram: ProgramType, reason: string) => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 작업 프로그램을 변경할 수 있습니다.')
+    if (isSupabaseConfigured) {
+      const result = await transferRemoteOrderProgram(order, targetProgram, reason)
+      setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (result.order.dbId ?? result.order.id) ? result.order : item))
+      await refreshRemote()
+      return
+    }
+
+    const preview = localProgramTransferPreview(order, targetProgram, localMembers, localPaymentSteps)
+    if (!preview.canTransfer) throw new Error(preview.blockedReason)
+    if (order.lockVersion !== preview.expectedVersion) throw new Error('다른 사용자가 먼저 작업을 변경했습니다. 새로고침 후 다시 시도해 주세요.')
+
+    const orderKey = order.dbId ?? order.id
+    const confirmed = localPaymentSteps.filter((step) => step.orderDbId === orderKey && step.confirmedAt)
+    const baseOrder: Order = {
+      ...order,
+      programType: targetProgram,
+      pricePerShot: preview.afterUnitPrice,
+      supplyAmount: preview.afterSupplyAmount,
+      vatAmount: preview.afterVatAmount,
+      totalAmount: preview.afterTotalAmount,
+      status: preview.afterStatus,
+      paymentNotifiedAt: order.status === '입금완료' && preview.afterStatus === '입금대기' ? null : order.paymentNotifiedAt,
+      lastProgramTransferAt: new Date().toISOString(),
+      lockVersion: order.lockVersion + 1,
+      updatedAt: new Date().toISOString(),
+    }
+    const targetSteps = buildLocalPaymentSteps(baseOrder, localMembers)
+    let nextOrder = Math.max(0, ...confirmed.map((step) => step.stepOrder))
+    const rebuilt = confirmed.length === 0
+      ? targetSteps
+      : targetSteps.flatMap((targetStep) => {
+        const paid = confirmed.filter((step) => step.payerId === targetStep.payerId && step.payeeId === targetStep.payeeId)
+        const supplyAmount = targetStep.supplyAmount - paid.reduce((sum, step) => sum + step.supplyAmount, 0)
+        const vatAmount = targetStep.vatAmount - paid.reduce((sum, step) => sum + step.vatAmount, 0)
+        if (supplyAmount === 0 && vatAmount === 0) return []
+        nextOrder += 1
+        return [{ ...targetStep, id: crypto.randomUUID(), stepOrder: nextOrder, supplyAmount, vatAmount, totalAmount: supplyAmount + vatAmount, canConfirm: nextOrder === Math.max(0, ...confirmed.map((step) => step.stepOrder)) + 1, previousPendingCount: nextOrder - Math.max(0, ...confirmed.map((step) => step.stepOrder)) - 1 }]
+      })
+    const hasPendingTransfer = rebuilt.length > 0
+    const updatedOrder = {
+      ...baseOrder,
+      programTransferState: hasPendingTransfer ? 'payment_pending' as const : 'none' as const,
+      programTransferDifference: hasPendingTransfer ? preview.difference : 0,
+    }
+
+    setLocalOrders((current) => current.map((item) => item.id === order.id ? updatedOrder : item))
+    setLocalPaymentSteps((current) => [
+      ...current.filter((step) => step.orderDbId !== orderKey),
+      ...confirmed,
+      ...rebuilt,
+    ])
+    setLocalNotifications((current) => [{
+      id: crypto.randomUUID(),
+      createdAt: new Date().toISOString(),
+      userId: order.createdBy,
+      role: 'all',
+      title: '작업 프로그램 변경',
+      message: `${order.storeName} 작업이 ${targetProgram === 'spark' ? '스파크' : targetProgram === 'spark_plus' ? '스파크 +' : '스파크S'}(으)로 변경되었습니다.`,
+      read: false,
+      orderId: order.id,
+    }, ...current])
+  }
+
   const handleArchiveOrder = async (order: Order, reason: string) => {
     if (!user) throw new Error('로그인이 필요합니다.')
     const canArchive = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))
@@ -516,7 +647,11 @@ export default function App() {
     setLocalPaymentSteps(updatedSteps)
     const orderSteps = updatedSteps.filter((item) => item.orderDbId === step.orderDbId)
     if (orderSteps.length > 0 && orderSteps.every((item) => item.confirmedAt)) {
-      setLocalOrders((current) => current.map((order) => (order.dbId ?? order.id) === step.orderDbId && order.status === '입금대기' ? transitionOrder(order, '입금완료') : order))
+      setLocalOrders((current) => current.map((order) => {
+        if ((order.dbId ?? order.id) !== step.orderDbId) return order
+        const settled = order.status === '입금대기' ? transitionOrder(order, '입금완료') : order
+        return { ...settled, programTransferState: 'none', programTransferDifference: 0 }
+      }))
       const target = localOrders.find((order) => (order.dbId ?? order.id) === step.orderDbId)
       if (target) setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: confirmedAt, userId: target.createdBy, role: 'all', title: '전체 입금 확인 완료', message: `${target.storeName} 작업의 입금 확인이 완료되었습니다.`, read: false, orderId: target.id }, ...current])
     }
@@ -567,7 +702,7 @@ export default function App() {
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
     {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
+    {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onProgramTransferPreview={handleProgramTransferPreview} onProgramTransfer={handleProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}

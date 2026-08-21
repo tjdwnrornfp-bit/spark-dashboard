@@ -3,6 +3,7 @@ export type MemberRole = 'agency' | 'distributor' | 'manager'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
 export type ProgramType = 'spark' | 'spark_plus' | 'spark_s'
+export type ProgramTransferState = 'none' | 'payment_pending'
 export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
 
 export interface ProgramPriceMap {
@@ -77,6 +78,9 @@ export interface Order {
   archivedAt: string | null
   archivedBy: string | null
   archiveReason: string
+  programTransferState: ProgramTransferState
+  programTransferDifference: number
+  lastProgramTransferAt: string | null
   lockVersion: number
   updatedAt: string
 }
@@ -111,6 +115,32 @@ export interface PaymentStep {
   canConfirm: boolean
   previousPendingCount: number
   createdAt: string
+}
+
+export interface ProgramTransferPreview {
+  orderDbId: string
+  orderNumber: string
+  currentStatus: OrderStatus
+  afterStatus: OrderStatus
+  beforeProgram: ProgramType
+  afterProgram: ProgramType
+  beforeUnitPrice: number
+  afterUnitPrice: number
+  beforeSupplyAmount: number
+  afterSupplyAmount: number
+  beforeVatAmount: number
+  afterVatAmount: number
+  beforeTotalAmount: number
+  afterTotalAmount: number
+  difference: number
+  confirmedPaymentCount: number
+  pendingPaymentCount: number
+  settlementMode: 'rebuild' | 'adjustment'
+  settlementImpact: string
+  keepsOperationRunning: boolean
+  expectedVersion: number
+  canTransfer: boolean
+  blockedReason: string
 }
 
 export interface PaymentAccount {

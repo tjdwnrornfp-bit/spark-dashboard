@@ -683,6 +683,56 @@ td small { margin-top: 4px; font-size: 10px; }
   .bulk-preview-summary { grid-template-columns: 1fr; }
 }
 
+/* v9.9: admin order program transfer and settlement adjustment */
+.order-status-stack { display: grid; justify-items: start; gap: 6px; }
+.transfer-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 3px 7px;
+  border: 1px solid #f1c98d;
+  border-radius: 999px;
+  background: #fff8e8;
+  color: #9a5b08;
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+.transfer-button { color: #2458a6; }
+.program-transfer-modal { width: min(760px, calc(100vw - 28px)); }
+.program-transfer-modal .modal-body { display: grid; gap: 16px; }
+.program-transfer-selector { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.program-transfer-selector label { display: grid; gap: 7px; }
+.program-transfer-selector label > span { color: #707887; font-size: 11px; font-weight: 750; }
+.program-transfer-selector label > strong,
+.program-transfer-selector select { min-height: 42px; padding: 10px 12px; border: 1px solid #dfe3e9; border-radius: 7px; background: #fff; font-size: 13px; }
+.program-transfer-selector label > strong { display: flex; align-items: center; background: #f7f8fa; }
+.program-transfer-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.program-transfer-summary > div { display: grid; gap: 4px; padding: 13px 14px; border: 1px solid #e4e7ec; border-radius: 8px; background: #fbfcfd; }
+.program-transfer-summary span { color: #727b88; font-size: 11px; font-weight: 700; }
+.program-transfer-summary strong { font-size: 16px; }
+.program-transfer-summary small { color: #818896; font-size: 10px; line-height: 1.45; }
+.program-transfer-summary .transfer-difference { background: #f6f8fb; }
+.program-transfer-summary .transfer-difference.positive { border-color: #f1c98d; background: #fff8e8; }
+.program-transfer-summary .transfer-difference.positive strong { color: #a45c00; }
+.program-transfer-summary .transfer-difference.negative { border-color: #efb7b2; background: #fff2f1; }
+.program-transfer-summary .transfer-difference.negative strong { color: #b42318; }
+.transfer-impact { display: grid; gap: 5px; padding: 13px 14px; border-left: 3px solid #5b8def; border-radius: 5px; background: #f3f7ff; }
+.transfer-impact strong { color: #2458a6; font-size: 12px; }
+.transfer-impact p { margin: 0; color: #5d6878; font-size: 11px; line-height: 1.55; }
+.transfer-blocked { display: grid; gap: 4px; padding: 13px 14px; border: 1px solid #efb7b2; border-radius: 7px; background: #fff2f1; }
+.transfer-blocked strong { color: #a72c23; font-size: 12px; }
+.transfer-blocked p { margin: 0; color: #79534f; font-size: 11px; line-height: 1.55; }
+.transfer-loading { padding: 16px; border-radius: 7px; background: #f5f7fa; color: #687384; font-size: 12px; text-align: center; }
+.transfer-reason textarea { width: 100%; resize: vertical; }
+.transfer-reason small { color: #7b8492; font-size: 10px; }
+
+@media (max-width: 720px) {
+  .program-transfer-selector,
+  .program-transfer-summary { grid-template-columns: 1fr; }
+  .program-transfer-modal { width: calc(100vw - 18px); }
+}
+
 /* v7 settlement accuracy, selectable start dates, and compact progress cards */
 .settlement-cards-four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .settlement-cards .received-stat strong { color: #14845f; }

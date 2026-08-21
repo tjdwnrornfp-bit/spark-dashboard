@@ -237,10 +237,10 @@ export function SettlementPage({
       sparkSRunningUnits: 0, companies: [],
     }
 
-    const adminStepsByOrder = new Map<string, PaymentStep>()
+    const adminStepsByOrder = new Map<string, PaymentStep[]>()
     incomingSteps.forEach((step) => {
-      adminStepsByOrder.set(step.orderDbId, step)
-      adminStepsByOrder.set(step.orderNumber, step)
+      const keys = new Set([step.orderDbId, step.orderNumber])
+      keys.forEach((key) => adminStepsByOrder.set(key, [...(adminStepsByOrder.get(key) ?? []), step]))
     })
 
     const grouped = new Map<string, AdminCompanyOverviewResult['companies'][number]>()
@@ -264,14 +264,17 @@ export function SettlementPage({
         sparkSCount: 0,
         lastOrderAt: order.createdAt,
       }
-      const adminStep = adminStepsByOrder.get(order.dbId ?? order.id) ?? adminStepsByOrder.get(order.id)
+      const adminSteps = adminStepsByOrder.get(order.dbId ?? order.id) ?? adminStepsByOrder.get(order.id) ?? []
+      const waitingAdminSteps = adminSteps.filter((step) => !step.confirmedAt)
+      const confirmedAdminSteps = adminSteps.filter((step) => step.confirmedAt)
       current.totalOrders += 1
-      if (adminStep?.confirmedAt) {
+      if (confirmedAdminSteps.length > 0) {
         current.confirmedOrderCount += 1
-        current.confirmedAmount += adminStep.totalAmount
-      } else if (adminStep) {
+        current.confirmedAmount += confirmedAdminSteps.reduce((sum, step) => sum + step.totalAmount, 0)
+      }
+      if (waitingAdminSteps.length > 0) {
         current.waitingOrderCount += 1
-        current.waitingAmount += adminStep.totalAmount
+        current.waitingAmount += waitingAdminSteps.reduce((sum, step) => sum + step.totalAmount, 0)
       }
       if (order.status === '만료') current.expiredCount += 1
       if (order.status === '구동중') {
@@ -475,9 +478,11 @@ export function SettlementPage({
   const selectedCount = selectAllFiltered ? Math.max(0, activePage.readyCount - excludedRows.size) : selectedRows.size
   const selectedAmount = selectAllFiltered ? Math.max(0, activePage.readyAmount - excludedAmount) : explicitSelectedAmount
 
-  const adminSettlementByOrder = useMemo(() => new Map(
-    incomingSteps.map((step) => [step.orderDbId ?? step.orderNumber, step.totalAmount]),
-  ), [incomingSteps])
+  const adminSettlementByOrder = useMemo(() => incomingSteps.reduce((amounts, step) => {
+    const keys = new Set([step.orderDbId, step.orderNumber])
+    keys.forEach((key) => amounts.set(key, (amounts.get(key) ?? 0) + step.totalAmount))
+    return amounts
+  }, new Map<string, number>()), [incomingSteps])
 
   const orderSettlementAmount = (order: Order) => user.role === 'admin'
     ? (adminSettlementByOrder.get(order.dbId ?? order.id) ?? adminSettlementByOrder.get(order.id) ?? 0)

@@ -16,6 +16,8 @@ import type {
   PaymentAccount,
   OperationsHealth,
   PaymentStep,
+  ProgramTransferPreview,
+  ProgramType,
   SettlementBatchHistoryItem,
   SettlementBatchItemDetail,
   SettlementBatchResult,
@@ -110,8 +112,39 @@ export function mapOrder(row: Record<string, unknown>): Order {
     archivedAt: nullableString(row.archived_at),
     archivedBy: nullableString(row.archived_by),
     archiveReason: stringValue(row.archive_reason),
+    programTransferState: row.program_transfer_state === 'payment_pending' ? 'payment_pending' : 'none',
+    programTransferDifference: numberValue(row.program_transfer_difference),
+    lastProgramTransferAt: nullableString(row.last_program_transfer_at),
     lockVersion: Math.max(1, numberValue(row.lock_version)),
     updatedAt: stringValue(row.updated_at),
+  }
+}
+
+function mapProgramTransferPreview(row: Record<string, unknown>): ProgramTransferPreview {
+  return {
+    orderDbId: stringValue(row.orderDbId),
+    orderNumber: stringValue(row.orderNumber),
+    currentStatus: row.currentStatus as ProgramTransferPreview['currentStatus'],
+    afterStatus: row.afterStatus as ProgramTransferPreview['afterStatus'],
+    beforeProgram: row.beforeProgram as ProgramType,
+    afterProgram: row.afterProgram as ProgramType,
+    beforeUnitPrice: numberValue(row.beforeUnitPrice),
+    afterUnitPrice: numberValue(row.afterUnitPrice),
+    beforeSupplyAmount: numberValue(row.beforeSupplyAmount),
+    afterSupplyAmount: numberValue(row.afterSupplyAmount),
+    beforeVatAmount: numberValue(row.beforeVatAmount),
+    afterVatAmount: numberValue(row.afterVatAmount),
+    beforeTotalAmount: numberValue(row.beforeTotalAmount),
+    afterTotalAmount: numberValue(row.afterTotalAmount),
+    difference: numberValue(row.difference),
+    confirmedPaymentCount: numberValue(row.confirmedPaymentCount),
+    pendingPaymentCount: numberValue(row.pendingPaymentCount),
+    settlementMode: row.settlementMode === 'adjustment' ? 'adjustment' : 'rebuild',
+    settlementImpact: stringValue(row.settlementImpact),
+    keepsOperationRunning: Boolean(row.keepsOperationRunning),
+    expectedVersion: numberValue(row.expectedVersion),
+    canTransfer: Boolean(row.canTransfer),
+    blockedReason: stringValue(row.blockedReason),
   }
 }
 
@@ -333,6 +366,39 @@ export async function setRemoteOrderStatus(order: Order, status: OrderStatus, re
   })
   if (error) throw error
   return mapOrder(data as Record<string, unknown>)
+}
+
+export async function previewRemoteOrderProgramTransfer(order: Order, targetProgram: ProgramType): Promise<ProgramTransferPreview> {
+  if (!order.dbId) throw new Error('서버 주문 식별자가 없습니다.')
+  const client = requiredClient()
+  const { data, error } = await client.rpc('preview_order_program_transfer_v99', {
+    p_order_id: order.dbId,
+    p_target_program: targetProgram,
+    p_expected_version: order.lockVersion,
+  })
+  if (error) throw error
+  return mapProgramTransferPreview((data ?? {}) as Record<string, unknown>)
+}
+
+export async function transferRemoteOrderProgram(
+  order: Order,
+  targetProgram: ProgramType,
+  reason: string,
+): Promise<{ order: Order; transfer: ProgramTransferPreview }> {
+  if (!order.dbId) throw new Error('서버 주문 식별자가 없습니다.')
+  const client = requiredClient()
+  const { data, error } = await client.rpc('transfer_order_program_v99', {
+    p_order_id: order.dbId,
+    p_target_program: targetProgram,
+    p_expected_version: order.lockVersion,
+    p_reason: reason.trim(),
+  })
+  if (error) throw error
+  const row = (data ?? {}) as Record<string, unknown>
+  return {
+    order: mapOrder((row.order ?? {}) as Record<string, unknown>),
+    transfer: mapProgramTransferPreview((row.transfer ?? {}) as Record<string, unknown>),
+  }
 }
 
 export async function archiveRemoteOrder(order: Order, reason: string): Promise<Order> {

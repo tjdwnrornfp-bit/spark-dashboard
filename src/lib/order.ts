@@ -76,6 +76,9 @@ export function createOrder(user: User, draft: OrderDraft, settings: AppSettings
     archivedAt: null,
     archivedBy: null,
     archiveReason: '',
+    programTransferState: 'none',
+    programTransferDifference: 0,
+    lastProgramTransferAt: null,
     lockVersion: 1,
     updatedAt: iso,
   }
