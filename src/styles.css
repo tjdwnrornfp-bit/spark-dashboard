@@ -213,6 +213,7 @@ td a { display: block; max-width: 210px; overflow: hidden; color: #4b78c8; text-
 .filter-tabs button.active { background: #1f2430; color: #fff; }
 .filter-tabs button.active span { color: #d9dce2; }
 .toolbar-actions { display: flex; align-items: center; gap: 7px; }
+.admin-order-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 7px; }
 .search-box { width: 190px; height: 29px; display: flex; align-items: center; gap: 6px; padding: 0 8px; border: 1px solid #e0e3e8; border-radius: 4px; background: #fff; color: #9da3ad; }
 .search-box input { width: 100%; border: 0; outline: 0; font-size: 9px; }
 .mobile-order-list { display: none; }
@@ -727,10 +728,79 @@ td small { margin-top: 4px; font-size: 10px; }
 .transfer-reason textarea { width: 100%; resize: vertical; }
 .transfer-reason small { color: #7b8492; font-size: 10px; }
 
+/* v9.10: bulk admin program transfer */
+.bulk-transfer-button { color: #2458a6; border-color: #b9cef5; background: #f5f8ff; }
+.bulk-transfer-button > span { min-width: 20px; padding: 2px 6px; border-radius: 999px; background: #2458a6; color: #fff; font-size: 10px; text-align: center; }
+.mobile-order-select { display: inline-flex; align-items: center; gap: 5px; margin-right: auto; color: #6d7480; font-size: 10px; font-weight: 700; }
+.mobile-order-select input { width: 16px; height: 16px; margin: 0; accent-color: #2563eb; }
+.bulk-program-transfer-modal { width: min(900px, calc(100vw - 28px)); }
+.bulk-program-transfer-modal .modal-body { display: grid; gap: 16px; }
+.bulk-transfer-targets { min-width: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 0; padding: 0; border: 0; }
+.bulk-transfer-targets legend { grid-column: 1 / -1; margin-bottom: 1px; color: #5e6571; font-size: 12px; font-weight: 750; }
+.bulk-transfer-targets > label { min-width: 0; display: flex; align-items: center; gap: 9px; padding: 12px; border: 1px solid #dfe3ea; border-radius: 8px; background: #fff; cursor: pointer; }
+.bulk-transfer-targets > label.active { border-color: #82a8f2; background: #f2f6ff; box-shadow: 0 0 0 2px rgba(37,99,235,.06); }
+.bulk-transfer-targets input { width: 16px; height: 16px; margin: 0; accent-color: #2563eb; }
+.bulk-transfer-targets label > span { min-width: 0; display: grid; gap: 3px; }
+.bulk-transfer-targets strong { color: #2f3540; font-size: 13px; }
+.bulk-transfer-targets small { overflow: hidden; color: #7a828f; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-transfer-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.bulk-transfer-summary > div { min-width: 0; display: grid; gap: 4px; padding: 13px 14px; border: 1px solid #e3e7ed; border-radius: 8px; background: #fbfcfd; }
+.bulk-transfer-summary span { color: #737c89; font-size: 10px; font-weight: 750; }
+.bulk-transfer-summary strong { overflow-wrap: anywhere; color: #2c323b; font-size: 16px; }
+.bulk-transfer-summary small { color: #858d99; font-size: 9px; line-height: 1.45; }
+.bulk-transfer-summary .positive { border-color: #f1c98d; background: #fff8e8; }
+.bulk-transfer-summary .positive strong { color: #a45c00; }
+.bulk-transfer-summary .negative { border-color: #efb7b2; background: #fff2f1; }
+.bulk-transfer-summary .negative strong { color: #b42318; }
+.bulk-transfer-issues { overflow: hidden; border: 1px solid #e2e6ec; border-radius: 8px; }
+.bulk-transfer-issue-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 11px 13px; border-bottom: 1px solid #e7eaf0; background: #f8f9fb; }
+.bulk-transfer-issue-header strong { font-size: 12px; }
+.bulk-transfer-issue-header span { color: #747d89; font-size: 10px; }
+.bulk-transfer-issue-list,
+.bulk-transfer-result-list { max-height: 250px; overflow: auto; display: grid; }
+.bulk-transfer-issue-list > div,
+.bulk-transfer-result-list > div { min-width: 0; display: grid; grid-template-columns: 70px minmax(150px, .8fr) minmax(220px, 1.4fr); align-items: center; gap: 10px; padding: 10px 13px; border-bottom: 1px solid #eef0f3; }
+.bulk-transfer-issue-list > div:last-child,
+.bulk-transfer-result-list > div:last-child { border-bottom: 0; }
+.bulk-transfer-issue-list span,
+.bulk-transfer-result-list span { width: fit-content; padding: 3px 6px; border-radius: 999px; font-size: 9px; font-weight: 800; white-space: nowrap; }
+.bulk-transfer-issue-list strong,
+.bulk-transfer-result-list strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.bulk-transfer-issue-list small,
+.bulk-transfer-result-list small { color: #747d89; font-size: 10px; line-height: 1.45; }
+.bulk-transfer-issue-list .blocked span,
+.bulk-transfer-result-list .failed span { color: #a72c23; background: #fff0ef; }
+.bulk-transfer-issue-list .excluded span,
+.bulk-transfer-result-list .excluded span { color: #626b78; background: #eef0f3; }
+.bulk-transfer-result-list .succeeded span { color: #087443; background: #e8f8ef; }
+.bulk-transfer-result-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
+.bulk-transfer-result-summary > div { display: grid; gap: 4px; padding: 15px; border: 1px solid #e3e7ed; border-radius: 8px; background: #f8f9fb; }
+.bulk-transfer-result-summary span { color: #747d89; font-size: 11px; font-weight: 750; }
+.bulk-transfer-result-summary strong { font-size: 20px; }
+.bulk-transfer-result-summary .succeeded { border-color: #a8dfc7; background: #eefaf4; }
+.bulk-transfer-result-summary .succeeded strong { color: #087443; }
+.bulk-transfer-result-summary .failed { border-color: #efb7b2; background: #fff2f1; }
+.bulk-transfer-result-summary .failed strong { color: #b42318; }
+
 @media (max-width: 720px) {
   .program-transfer-selector,
   .program-transfer-summary { grid-template-columns: 1fr; }
   .program-transfer-modal { width: calc(100vw - 18px); }
+  .bulk-program-transfer-modal { width: calc(100vw - 18px); }
+  .bulk-transfer-targets,
+  .bulk-transfer-summary,
+  .bulk-transfer-result-summary { grid-template-columns: 1fr; }
+  .bulk-transfer-issue-header { align-items: flex-start; flex-direction: column; }
+  .bulk-transfer-issue-list > div,
+  .bulk-transfer-result-list > div { grid-template-columns: auto minmax(0, 1fr); }
+  .bulk-transfer-issue-list small,
+  .bulk-transfer-result-list small { grid-column: 1 / -1; }
+}
+
+@media (max-width: 480px) {
+  .admin-order-actions { width: 100%; display: grid; grid-template-columns: 1fr 1fr; }
+  .admin-order-actions button { width: 100%; justify-content: center; }
+  .admin-order-actions .bulk-transfer-button { grid-column: 1 / -1; }
 }
 
 /* v7 settlement accuracy, selectable start dates, and compact progress cards */

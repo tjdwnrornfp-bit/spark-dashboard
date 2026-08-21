@@ -2,6 +2,8 @@ import type {
   AccountDraft,
   AppSettings,
   AdminCompanyOverviewResult,
+  BulkProgramTransferPreview,
+  BulkProgramTransferResult,
   CompanyOverviewSort,
   AuditLog,
   MemberDeletionCheck,
@@ -145,6 +147,64 @@ function mapProgramTransferPreview(row: Record<string, unknown>): ProgramTransfe
     expectedVersion: numberValue(row.expectedVersion),
     canTransfer: Boolean(row.canTransfer),
     blockedReason: stringValue(row.blockedReason),
+  }
+}
+
+function mapBulkProgramTransferPreview(row: Record<string, unknown>): BulkProgramTransferPreview {
+  const programCounts = (row.programCounts ?? {}) as Record<string, unknown>
+  return {
+    selectedCount: numberValue(row.selectedCount),
+    readyCount: numberValue(row.readyCount),
+    excludedCount: numberValue(row.excludedCount),
+    blockedCount: numberValue(row.blockedCount),
+    programCounts: {
+      spark: numberValue(programCounts.spark),
+      spark_plus: numberValue(programCounts.spark_plus),
+      spark_s: numberValue(programCounts.spark_s),
+    },
+    targetProgram: row.targetProgram as ProgramType,
+    expectedAdditionalAmount: numberValue(row.expectedAdditionalAmount),
+    expectedDeductionAmount: numberValue(row.expectedDeductionAmount),
+    expectedDifference: numberValue(row.expectedDifference),
+    items: Array.isArray(row.items) ? row.items.map((value) => {
+      const item = value as Record<string, unknown>
+      const preview = item.preview && typeof item.preview === 'object'
+        ? mapProgramTransferPreview(item.preview as Record<string, unknown>)
+        : null
+      return {
+        orderDbId: stringValue(item.orderDbId),
+        orderNumber: stringValue(item.orderNumber),
+        storeName: stringValue(item.storeName),
+        beforeProgram: item.beforeProgram as ProgramType,
+        status: item.status === 'ready' ? 'ready' as const : item.status === 'excluded' ? 'excluded' as const : 'blocked' as const,
+        difference: numberValue(item.difference),
+        expectedVersion: numberValue(item.expectedVersion),
+        blockedReason: stringValue(item.blockedReason),
+        preview,
+      }
+    }) : [],
+  }
+}
+
+function mapBulkProgramTransferResult(row: Record<string, unknown>): BulkProgramTransferResult {
+  return {
+    selectedCount: numberValue(row.selectedCount),
+    succeededCount: numberValue(row.succeededCount),
+    failedCount: numberValue(row.failedCount),
+    excludedCount: numberValue(row.excludedCount),
+    targetProgram: row.targetProgram as ProgramType,
+    items: Array.isArray(row.items) ? row.items.map((value) => {
+      const item = value as Record<string, unknown>
+      return {
+        orderDbId: stringValue(item.orderDbId),
+        orderNumber: stringValue(item.orderNumber),
+        storeName: stringValue(item.storeName),
+        status: item.status === 'succeeded' ? 'succeeded' as const : item.status === 'excluded' ? 'excluded' as const : 'failed' as const,
+        message: stringValue(item.message),
+        order: item.order && typeof item.order === 'object' ? mapOrder(item.order as Record<string, unknown>) : null,
+        transfer: item.transfer && typeof item.transfer === 'object' ? mapProgramTransferPreview(item.transfer as Record<string, unknown>) : null,
+      }
+    }) : [],
   }
 }
 
@@ -399,6 +459,41 @@ export async function transferRemoteOrderProgram(
     order: mapOrder((row.order ?? {}) as Record<string, unknown>),
     transfer: mapProgramTransferPreview((row.transfer ?? {}) as Record<string, unknown>),
   }
+}
+
+function bulkProgramTransferItems(orders: Order[]) {
+  return orders.map((order) => {
+    if (!order.dbId) throw new Error(`${order.id} 작업의 서버 식별자가 없습니다.`)
+    return { order_id: order.dbId, expected_version: order.lockVersion }
+  })
+}
+
+export async function previewRemoteBulkOrderProgramTransfer(
+  orders: Order[],
+  targetProgram: ProgramType,
+): Promise<BulkProgramTransferPreview> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('preview_bulk_order_program_transfer_v910', {
+    p_items: bulkProgramTransferItems(orders),
+    p_target_program: targetProgram,
+  })
+  if (error) throw error
+  return mapBulkProgramTransferPreview((data ?? {}) as Record<string, unknown>)
+}
+
+export async function transferRemoteBulkOrderProgram(
+  orders: Order[],
+  targetProgram: ProgramType,
+  reason: string,
+): Promise<BulkProgramTransferResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('transfer_bulk_order_program_v910', {
+    p_items: bulkProgramTransferItems(orders),
+    p_target_program: targetProgram,
+    p_reason: reason.trim(),
+  })
+  if (error) throw error
+  return mapBulkProgramTransferResult((data ?? {}) as Record<string, unknown>)
 }
 
 export async function archiveRemoteOrder(order: Order, reason: string): Promise<Order> {

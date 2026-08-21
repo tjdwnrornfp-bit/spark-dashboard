@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -28,6 +28,7 @@ import {
   fetchRemoteSnapshot,
   markAllRemoteNotificationsRead,
   markRemoteNotificationRead,
+  previewRemoteBulkOrderProgramTransfer,
   previewRemoteOrderProgramTransfer,
   resetRemoteMemberPassword,
   restoreRemoteOrder,
@@ -35,6 +36,7 @@ import {
   saveRemoteAccount,
   saveRemoteSettings,
   setRemoteOrderStatus,
+  transferRemoteBulkOrderProgram,
   transferRemoteOrderProgram,
 } from './lib/backend'
 import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail, validatePassword } from './lib/auth'
@@ -491,6 +493,112 @@ export default function App() {
     }, ...current])
   }
 
+  const handleBulkProgramTransferPreview = useCallback(async (selectedOrders: Order[], targetProgram: ProgramType): Promise<BulkProgramTransferPreview> => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 작업 프로그램을 변경할 수 있습니다.')
+    if (isSupabaseConfigured) return previewRemoteBulkOrderProgramTransfer(selectedOrders, targetProgram)
+
+    const programCounts: BulkProgramTransferPreview['programCounts'] = { spark: 0, spark_plus: 0, spark_s: 0 }
+    let readyCount = 0
+    let excludedCount = 0
+    let blockedCount = 0
+    let expectedAdditionalAmount = 0
+    let expectedDeductionAmount = 0
+    let expectedDifference = 0
+    const items = selectedOrders.map((order) => {
+      programCounts[order.programType] += 1
+      if (order.programType === targetProgram) {
+        excludedCount += 1
+        return {
+          orderDbId: order.dbId ?? order.id,
+          orderNumber: order.id,
+          storeName: order.storeName,
+          beforeProgram: order.programType,
+          status: 'excluded' as const,
+          difference: 0,
+          expectedVersion: order.lockVersion,
+          blockedReason: '이미 변경 대상 프로그램으로 등록된 작업입니다.',
+          preview: null,
+        }
+      }
+      const preview = localProgramTransferPreview(order, targetProgram, localMembers, localPaymentSteps)
+      if (!preview.canTransfer) {
+        blockedCount += 1
+        return {
+          orderDbId: order.dbId ?? order.id,
+          orderNumber: order.id,
+          storeName: order.storeName,
+          beforeProgram: order.programType,
+          status: 'blocked' as const,
+          difference: preview.difference,
+          expectedVersion: order.lockVersion,
+          blockedReason: preview.blockedReason,
+          preview,
+        }
+      }
+      readyCount += 1
+      expectedDifference += preview.difference
+      if (preview.difference > 0) expectedAdditionalAmount += preview.difference
+      if (preview.difference < 0) expectedDeductionAmount += Math.abs(preview.difference)
+      return {
+        orderDbId: order.dbId ?? order.id,
+        orderNumber: order.id,
+        storeName: order.storeName,
+        beforeProgram: order.programType,
+        status: 'ready' as const,
+        difference: preview.difference,
+        expectedVersion: order.lockVersion,
+        blockedReason: '',
+        preview,
+      }
+    })
+    return {
+      selectedCount: selectedOrders.length,
+      readyCount,
+      excludedCount,
+      blockedCount,
+      programCounts,
+      targetProgram,
+      expectedAdditionalAmount,
+      expectedDeductionAmount,
+      expectedDifference,
+      items,
+    }
+  }, [localMembers, localPaymentSteps, user])
+
+  const handleBulkProgramTransfer = async (selectedOrders: Order[], targetProgram: ProgramType, reason: string): Promise<BulkProgramTransferResult> => {
+    if (!user || user.role !== 'admin') throw new Error('관리자만 작업 프로그램을 변경할 수 있습니다.')
+    if (isSupabaseConfigured) {
+      const result = await transferRemoteBulkOrderProgram(selectedOrders, targetProgram, reason)
+      const updatedById = new Map(result.items.flatMap((item) => item.order ? [[item.order.dbId ?? item.order.id, item.order] as const] : []))
+      setRemoteOrders((current) => current.map((item) => updatedById.get(item.dbId ?? item.id) ?? item))
+      await refreshRemote()
+      return result
+    }
+
+    const items: BulkProgramTransferResult['items'] = []
+    for (const order of selectedOrders) {
+      if (order.programType === targetProgram) {
+        items.push({ orderDbId: order.dbId ?? order.id, orderNumber: order.id, storeName: order.storeName, status: 'excluded', message: '이미 대상 프로그램인 작업입니다.', order: null, transfer: null })
+        continue
+      }
+      try {
+        const transfer = localProgramTransferPreview(order, targetProgram, localMembers, localPaymentSteps)
+        await handleProgramTransfer(order, targetProgram, reason)
+        items.push({ orderDbId: order.dbId ?? order.id, orderNumber: order.id, storeName: order.storeName, status: 'succeeded', message: '프로그램 변경이 완료되었습니다.', order: null, transfer })
+      } catch (error) {
+        items.push({ orderDbId: order.dbId ?? order.id, orderNumber: order.id, storeName: order.storeName, status: 'failed', message: errorMessage(error, '프로그램을 변경하지 못했습니다.'), order: null, transfer: null })
+      }
+    }
+    return {
+      selectedCount: selectedOrders.length,
+      succeededCount: items.filter((item) => item.status === 'succeeded').length,
+      failedCount: items.filter((item) => item.status === 'failed').length,
+      excludedCount: items.filter((item) => item.status === 'excluded').length,
+      targetProgram,
+      items,
+    }
+  }
+
   const handleArchiveOrder = async (order: Order, reason: string) => {
     if (!user) throw new Error('로그인이 필요합니다.')
     const canArchive = user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))
@@ -702,7 +810,7 @@ export default function App() {
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
     {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onProgramTransferPreview={handleProgramTransferPreview} onProgramTransfer={handleProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
+    {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}

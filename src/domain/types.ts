@@ -143,6 +143,54 @@ export interface ProgramTransferPreview {
   blockedReason: string
 }
 
+export type BulkProgramTransferItemStatus = 'ready' | 'excluded' | 'blocked'
+
+export interface BulkProgramTransferPreviewItem {
+  orderDbId: string
+  orderNumber: string
+  storeName: string
+  beforeProgram: ProgramType
+  status: BulkProgramTransferItemStatus
+  difference: number
+  expectedVersion: number
+  blockedReason: string
+  preview: ProgramTransferPreview | null
+}
+
+export interface BulkProgramTransferPreview {
+  selectedCount: number
+  readyCount: number
+  excludedCount: number
+  blockedCount: number
+  programCounts: Record<ProgramType, number>
+  targetProgram: ProgramType
+  expectedAdditionalAmount: number
+  expectedDeductionAmount: number
+  expectedDifference: number
+  items: BulkProgramTransferPreviewItem[]
+}
+
+export type BulkProgramTransferResultStatus = 'succeeded' | 'failed' | 'excluded'
+
+export interface BulkProgramTransferResultItem {
+  orderDbId: string
+  orderNumber: string
+  storeName: string
+  status: BulkProgramTransferResultStatus
+  message: string
+  order: Order | null
+  transfer: ProgramTransferPreview | null
+}
+
+export interface BulkProgramTransferResult {
+  selectedCount: number
+  succeededCount: number
+  failedCount: number
+  excludedCount: number
+  targetProgram: ProgramType
+  items: BulkProgramTransferResultItem[]
+}
+
 export interface PaymentAccount {
   payeeId: string | null
   payeeUsername: string
