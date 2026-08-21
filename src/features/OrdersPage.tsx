@@ -19,6 +19,12 @@ function emptyDraft(programType: ProgramType, now = new Date()): OrderDraft {
 
 const BULK_HEADERS = ['상호명', '대표키워드', '플레이스URL', '일일수량', '구동일수', '시작일', '메모']
 
+const ADMIN_EXCEL_PROGRAM_LABELS: Record<ProgramType, string> = {
+  spark: '스파크',
+  spark_plus: '스파크+',
+  spark_s: '스파크s',
+}
+
 interface Preview {
   draft: OrderDraft
   mid: string
@@ -243,7 +249,7 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
       ...target.map((order) => [
         order.creatorUsername,
         order.creatorGroupName || '-',
-        labelForProgram(order.programType ?? 'spark'),
+        ADMIN_EXCEL_PROGRAM_LABELS[order.programType ?? 'spark'],
         order.keyword,
         order.mid,
         order.storeName,
