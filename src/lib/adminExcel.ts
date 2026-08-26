@@ -5,6 +5,7 @@ export const ADMIN_EXCEL_PROGRAM_LABELS: Record<ProgramType, string> = {
   spark: '스파크',
   spark_plus: '스파크+',
   spark_s: '스파크s',
+  spark_s_plus: '스파크s+',
 }
 
 const ADMIN_EXCEL_HEADERS = [

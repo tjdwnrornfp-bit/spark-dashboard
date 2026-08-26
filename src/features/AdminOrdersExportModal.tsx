@@ -6,7 +6,7 @@ import { ADMIN_EXCEL_PROGRAM_LABELS, downloadAdminOrdersExcel } from '../lib/adm
 import { todayInSeoul } from '../lib/date'
 import { STATUS_ORDER } from '../lib/order'
 
-const PROGRAM_TYPES: ProgramType[] = ['spark', 'spark_plus', 'spark_s']
+const PROGRAM_TYPES: ProgramType[] = ['spark', 'spark_plus', 'spark_s', 'spark_s_plus']
 
 function orderKey(order: Order): string {
   return order.dbId ?? order.id

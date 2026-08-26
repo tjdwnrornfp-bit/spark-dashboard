@@ -42,7 +42,7 @@ import {
 import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail, validatePassword } from './lib/auth'
 import { calculateAmount } from './lib/money'
 import { applyScheduledTransitions, createOrder, extractMid, transitionOrder } from './lib/order'
-import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, PROGRAM_PAGE_MAP } from './lib/program'
+import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, labelForProgram, PROGRAM_PAGE_MAP } from './lib/program'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 
 function errorMessage(error: unknown, fallback: string): string {
@@ -337,6 +337,7 @@ export default function App() {
       sparkPricePerShot: 0,
       sparkPlusPricePerShot: 0,
       sparkSPricePerShot: 0,
+      sparkSPlusPricePerShot: 40,
       active: false,
       requestedAt: nowIso,
       approvedAt: null,
@@ -487,7 +488,7 @@ export default function App() {
       userId: order.createdBy,
       role: 'all',
       title: '작업 프로그램 변경',
-      message: `${order.storeName} 작업이 ${targetProgram === 'spark' ? '스파크' : targetProgram === 'spark_plus' ? '스파크 +' : '스파크S'}(으)로 변경되었습니다.`,
+      message: `${order.storeName} 작업이 ${labelForProgram(targetProgram)}(으)로 변경되었습니다.`,
       read: false,
       orderId: order.id,
     }, ...current])
@@ -497,7 +498,7 @@ export default function App() {
     if (!user || user.role !== 'admin') throw new Error('관리자만 작업 프로그램을 변경할 수 있습니다.')
     if (isSupabaseConfigured) return previewRemoteBulkOrderProgramTransfer(selectedOrders, targetProgram)
 
-    const programCounts: BulkProgramTransferPreview['programCounts'] = { spark: 0, spark_plus: 0, spark_s: 0 }
+    const programCounts: BulkProgramTransferPreview['programCounts'] = { spark: 0, spark_plus: 0, spark_s: 0, spark_s_plus: 0 }
     let readyCount = 0
     let excludedCount = 0
     let blockedCount = 0
@@ -707,11 +708,11 @@ export default function App() {
     }
     if (!actorIsAdmin && !actorIsManager && params.approvalStatus === 'approved') {
       const myPrices = getProgramPriceMap(user)
-      if (params.prices.spark <= myPrices.spark || params.prices.spark_plus <= myPrices.spark_plus || params.prices.spark_s <= myPrices.spark_s) throw new Error('하위 회원의 각 프로그램 단가는 내 단가보다 높아야 합니다.')
+      if (params.prices.spark <= myPrices.spark || params.prices.spark_plus <= myPrices.spark_plus || params.prices.spark_s <= myPrices.spark_s || params.prices.spark_s_plus <= myPrices.spark_s_plus) throw new Error('하위 회원의 각 프로그램 단가는 내 단가보다 높아야 합니다.')
     }
     const makeManager = actorIsAdmin && !target.sponsorId && !target.managerId && params.role === 'manager'
     const nowIso = new Date().toISOString()
-    const nextPrices = makeManager ? { spark: 1, spark_plus: 1, spark_s: 1 } : params.approvalStatus === 'approved' ? params.prices : getProgramPriceMap(target)
+    const nextPrices = makeManager ? { spark: 1, spark_plus: 1, spark_s: 1, spark_s_plus: 40 } : params.approvalStatus === 'approved' ? params.prices : getProgramPriceMap(target)
     const updated: User = applyProgramPrices({
       ...target,
       role: target.sponsorId || target.managerId ? 'agency' : makeManager ? 'agency' : params.role === 'manager' ? 'agency' : params.role,
@@ -723,7 +724,7 @@ export default function App() {
       updatedAt: nowIso,
     }, nextPrices)
     setLocalMembers((current) => current.map((member) => member.id === target.id ? updated : member))
-    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: nowIso, userId: target.id, role: 'all', title: params.approvalStatus === 'approved' ? '회원가입 승인 완료' : '회원가입 반려', message: params.approvalStatus !== 'approved' ? '회원가입 신청이 반려되었습니다.' : makeManager ? '중간관리자 계정으로 승인되었습니다. 관리 코드로 가입한 대행사를 승인하고 단가를 지정할 수 있습니다.' : `승인되었습니다. 스파크 ${params.prices.spark}원 / 스파크+ ${params.prices.spark_plus}원 / 스파크S ${params.prices.spark_s}원입니다.`, read: false }, ...current])
+    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: nowIso, userId: target.id, role: 'all', title: params.approvalStatus === 'approved' ? '회원가입 승인 완료' : '회원가입 반려', message: params.approvalStatus !== 'approved' ? '회원가입 신청이 반려되었습니다.' : makeManager ? '중간관리자 계정으로 승인되었습니다. 관리 코드로 가입한 대행사를 승인하고 단가를 지정할 수 있습니다.' : `승인되었습니다. 스파크 ${params.prices.spark}원 / 스파크+ ${params.prices.spark_plus}원 / 스파크S ${params.prices.spark_s}원 / 스파크S+ ${params.prices.spark_s_plus}원입니다.`, read: false }, ...current])
   }
 
   const handleAccountChange = async (account: AccountDraft) => {

@@ -2,14 +2,15 @@ export type Role = 'admin' | 'agency' | 'distributor'
 export type MemberRole = 'agency' | 'distributor' | 'manager'
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
-export type ProgramType = 'spark' | 'spark_plus' | 'spark_s'
+export type ProgramType = 'spark' | 'spark_plus' | 'spark_s' | 'spark_s_plus'
 export type ProgramTransferState = 'none' | 'payment_pending'
-export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
+export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
 
 export interface ProgramPriceMap {
   spark: number
   spark_plus: number
   spark_s: number
+  spark_s_plus: number
 }
 
 export interface User {
@@ -23,6 +24,7 @@ export interface User {
   sparkPricePerShot: number
   sparkPlusPricePerShot: number
   sparkSPricePerShot: number
+  sparkSPlusPricePerShot: number
   active: boolean
   requestedAt: string
   approvedAt: string | null
@@ -326,6 +328,8 @@ export interface SettlementRow extends PaymentStep {
   registrantSparkPlusAmount: number
   registrantSparkSCount: number
   registrantSparkSAmount: number
+  registrantSparkSPlusCount: number
+  registrantSparkSPlusAmount: number
 }
 
 export interface SettlementPageResult {
@@ -423,9 +427,11 @@ export interface AdminCompanyOverviewItem {
   runningCount: number
   dailyRunningShots: number
   sparkSRunningUnits: number
+  sparkSPlusRunningUnits: number
   sparkCount: number
   sparkPlusCount: number
   sparkSCount: number
+  sparkSPlusCount: number
   lastOrderAt: string
 }
 
@@ -440,6 +446,7 @@ export interface AdminCompanyOverviewResult {
   expiredCount: number
   dailyRunningShots: number
   sparkSRunningUnits: number
+  sparkSPlusRunningUnits: number
   companies: AdminCompanyOverviewItem[]
 }
 

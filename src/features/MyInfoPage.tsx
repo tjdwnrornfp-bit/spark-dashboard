@@ -109,6 +109,10 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
               <ProgramIcon programType="spark_s" size={48} />
               <div><span>스파크S</span><strong>{formatWon(prices.spark_s)}</strong><small>1건 기준</small></div>
             </article>
+            <article className="myinfo-price-card">
+              <ProgramIcon programType="spark_s_plus" size={48} />
+              <div><span>스파크S+</span><strong>{formatWon(prices.spark_s_plus)}</strong><small>1건 기준</small></div>
+            </article>
           </div>
         </section>
       )}

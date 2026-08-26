@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { Icon } from '../components/Icon'
+import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
 import type { Notice, Order, Page, PaymentStep, User } from '../domain/types'
@@ -27,10 +28,12 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
   const visible = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const running = visible.filter((order) => order.status === '구동중')
   const paidWaitingStart = visible.filter((order) => order.status === '입금완료')
-  const runningShots = running.filter((order) => order.programType !== 'spark_s').reduce((sum, order) => sum + order.dailyShots, 0)
+  const runningShots = running.filter((order) => order.programType === 'spark' || order.programType === 'spark_plus').reduce((sum, order) => sum + order.dailyShots, 0)
   const runningCases = running.filter((order) => order.programType === 'spark_s').reduce((sum, order) => sum + order.dailyShots, 0)
-  const totalContractShots = visible.filter((order) => order.programType !== 'spark_s').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
+  const runningSPlusCases = running.filter((order) => order.programType === 'spark_s_plus').reduce((sum, order) => sum + order.dailyShots, 0)
+  const totalContractShots = visible.filter((order) => order.programType === 'spark' || order.programType === 'spark_plus').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
   const totalContractCases = visible.filter((order) => order.programType === 'spark_s').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
+  const totalContractSPlusCases = visible.filter((order) => order.programType === 'spark_s_plus').reduce((sum, order) => sum + order.dailyShots * order.operationDays, 0)
 
   const settlementSteps = user.role === 'admin'
     ? activePaymentSteps.filter((step) => step.payeeId === user.id)
@@ -90,8 +93,8 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
         <PageHeader title="대시보드" subtitle={`${user.username}님, 안녕하세요. 오늘 현황을 확인하세요.`} />
         {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
         <section className="daily-summary-card">
-          <div><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {running.length}건 · 스파크S {runningCases.toLocaleString('ko-KR')}건</p></div>
-          <div className="daily-summary-right"><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}</strong><small>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건</small></div>
+          <div><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {running.length}건 · 스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건</p></div>
+          <div className="daily-summary-right"><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}</strong><small>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건 · 스파크S+ 전체 {totalContractSPlusCases.toLocaleString('ko-KR')}건</small></div>
         </section>
         <section className="mini-stat-grid payment-stat-grid agency-payment-grid">
           <MiniStat label="입금 대기 금액" value={formatWon(waitingAmount)} />
@@ -112,7 +115,7 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
               {running.map((order) => (
                 <article key={order.id} className="dashboard-running-item compact-running-card">
                   <div className="compact-running-title"><strong>[{PROGRAMS.find((program) => program.type === order.programType)?.label}] {order.storeName}</strong><span>{order.keyword}</span></div>
-                  {order.programType === 'spark_s' ? <span className="spark-s-running-status">구동중 · {order.dailyShots.toLocaleString('ko-KR')}건</span> : <ProgressGauge order={order} now={now} compact />}
+                  {order.programType === 'spark_s' || order.programType === 'spark_s_plus' ? <span className="spark-s-running-status">구동중 · {order.dailyShots.toLocaleString('ko-KR')}건</span> : <ProgressGauge order={order} now={now} compact />}
                 </article>
               ))}
             </div>
@@ -136,8 +139,8 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
     <div className="page-stack dashboard-page-stack">
       <PageHeader title="대시보드" subtitle="전체 작업 수량과 관리자 정산 현황을 확인합니다." />
       <section className="admin-kpi-card">
-        <div><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}<small>타</small></strong><p>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건</p></div>
-        <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}</strong><small>스파크S {runningCases.toLocaleString('ko-KR')}건 · 구동중 {running.length}건</small></div>
+        <div><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}<small>타</small></strong><p>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건 · 스파크S+ 전체 {totalContractSPlusCases.toLocaleString('ko-KR')}건</p></div>
+        <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}</strong><small>스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건 · 구동중 {running.length}건</small></div>
       </section>
       <section className="mini-stat-grid payment-stat-grid">
         <MiniStat label="입금 대기 금액" value={formatWon(waitingAmount)} />
@@ -145,9 +148,9 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
         <MiniStat label="총 정산 금액" value={formatWon(totalAmount)} />
       </section>
       <section className="panel compact-panel dashboard-progress-panel program-summary-panel">
-        <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>스파크, 스파크 +, 스파크S를 분리해 관리합니다.</p></div></div>
+        <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>네 프로그램의 접수와 운영 상태를 분리해 관리합니다.</p></div></div>
         <div className="program-dashboard-grid">
-          {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
+          {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><ProgramIcon programType={summary.type} size={40} /><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
         </div>
       </section>
       <section className="dashboard-lower-grid">

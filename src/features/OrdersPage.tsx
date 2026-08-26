@@ -133,7 +133,7 @@ export function OrdersPage({ user, orders, settings, now, programType, onCreateO
   const unitPrice = getUserProgramPrice(user, programType)
   const quantityUnit = unitLabelForProgram(programType)
   const unitPriceLabel = unitPriceLabelForProgram(programType)
-  const showProgress = user.role !== 'admin' && programType !== 'spark_s'
+  const showProgress = user.role !== 'admin' && programType !== 'spark_s' && programType !== 'spark_s_plus'
   const meta = programMeta(programType)
 
   const sourceOrders = useMemo(() => orders.filter((order) => (order.programType ?? 'spark') === programType), [orders, programType])

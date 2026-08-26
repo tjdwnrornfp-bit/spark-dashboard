@@ -1303,7 +1303,7 @@ td small { margin-top: 4px; font-size: 10px; }
 }
 
 .myinfo-program-panel { padding: 23px 24px 25px; border-radius: 16px; box-shadow: 0 9px 25px rgba(30, 47, 78, .04); }
-.myinfo-price-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.myinfo-price-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .myinfo-price-card {
   min-height: 112px;
   display: flex;

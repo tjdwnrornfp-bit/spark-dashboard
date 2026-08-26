@@ -98,7 +98,7 @@ export function AdminBulkProgramTransferModal({ orders, onClose, onPreview, onTr
       {preview && <>
         <div className="bulk-transfer-summary">
           <div><span>선택 작업</span><strong>{preview.selectedCount.toLocaleString('ko-KR')}건</strong><small>변경 가능 {preview.readyCount.toLocaleString('ko-KR')}건</small></div>
-          <div><span>현재 프로그램</span><strong>{preview.programCounts.spark.toLocaleString('ko-KR')} / {preview.programCounts.spark_plus.toLocaleString('ko-KR')} / {preview.programCounts.spark_s.toLocaleString('ko-KR')}</strong><small>스파크 / 스파크+ / 스파크s</small></div>
+          <div><span>현재 프로그램</span><strong>{PROGRAMS.map((program) => preview.programCounts[program.type].toLocaleString('ko-KR')).join(' / ')}</strong><small>{PROGRAMS.map((program) => program.label.replace(' +', '+')).join(' / ')}</small></div>
           <div><span>변경 후 프로그램</span><strong>{labelForProgram(preview.targetProgram)}</strong><small>등록자별 현재 승인 단가 적용</small></div>
           <div className="positive"><span>예상 추가금 총액</span><strong>+{formatWon(preview.expectedAdditionalAmount)}</strong><small>변경 가능한 주문의 양수 차액 합계</small></div>
           <div className="negative"><span>예상 차감 총액</span><strong>-{formatWon(preview.expectedDeductionAmount)}</strong><small>미입금 주문 중 자동 재구성 가능한 차감</small></div>

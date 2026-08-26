@@ -4,6 +4,7 @@ export const PROGRAMS: Array<{ type: ProgramType; label: string; shortLabel: str
   { type: 'spark', label: '스파크', shortLabel: 'SPARK', page: 'sparkOrders', orderPrefix: 'SPK', sheetName: '스파크접수' },
   { type: 'spark_plus', label: '스파크 +', shortLabel: 'SPARK+', page: 'sparkPlusOrders', orderPrefix: 'SPP', sheetName: '스파크플러스접수' },
   { type: 'spark_s', label: '스파크S', shortLabel: 'SPARK S', page: 'sparkSOrders', orderPrefix: 'SPS', sheetName: '스파크S접수' },
+  { type: 'spark_s_plus', label: '스파크S+', shortLabel: 'SPARK S+', page: 'sparkSPlusOrders', orderPrefix: 'SPSP', sheetName: '스파크S플러스접수' },
 ]
 
 export const PROGRAM_PAGE_MAP: Record<Page, ProgramType | null> = {
@@ -12,6 +13,7 @@ export const PROGRAM_PAGE_MAP: Record<Page, ProgramType | null> = {
   sparkOrders: 'spark',
   sparkPlusOrders: 'spark_plus',
   sparkSOrders: 'spark_s',
+  sparkSPlusOrders: 'spark_s_plus',
   settlement: null,
   members: null,
   operations: null,
@@ -36,11 +38,11 @@ export function orderPrefixForProgram(programType: ProgramType): string {
 }
 
 export function unitLabelForProgram(programType: ProgramType): '타' | '건' {
-  return programType === 'spark_s' ? '건' : '타'
+  return programType === 'spark_s' || programType === 'spark_s_plus' ? '건' : '타'
 }
 
 export function unitPriceLabelForProgram(programType: ProgramType): string {
-  return programType === 'spark_s' ? '1건당 단가' : '1타당 단가'
+  return programType === 'spark_s' || programType === 'spark_s_plus' ? '1건당 단가' : '1타당 단가'
 }
 
 export function getProgramPriceMap(user: User): ProgramPriceMap {
@@ -48,6 +50,7 @@ export function getProgramPriceMap(user: User): ProgramPriceMap {
     spark: user.sparkPricePerShot || user.pricePerShot || 0,
     spark_plus: user.sparkPlusPricePerShot || 0,
     spark_s: user.sparkSPricePerShot || 0,
+    spark_s_plus: user.sparkSPlusPricePerShot ?? 40,
   }
 }
 
@@ -63,12 +66,13 @@ export function applyProgramPrices(user: User, prices: ProgramPriceMap): User {
     sparkPricePerShot: prices.spark,
     sparkPlusPricePerShot: prices.spark_plus,
     sparkSPricePerShot: prices.spark_s,
+    sparkSPlusPricePerShot: prices.spark_s_plus,
   }
 }
 
 export function formatProgramPrices(user: User): string {
   const prices = getProgramPriceMap(user)
-  return `스파크 ${prices.spark.toLocaleString('ko-KR')}원 · 스파크 + ${prices.spark_plus.toLocaleString('ko-KR')}원 · 스파크S ${prices.spark_s.toLocaleString('ko-KR')}원`
+  return `스파크 ${prices.spark.toLocaleString('ko-KR')}원 · 스파크 + ${prices.spark_plus.toLocaleString('ko-KR')}원 · 스파크S ${prices.spark_s.toLocaleString('ko-KR')}원 · 스파크S+ ${prices.spark_s_plus.toLocaleString('ko-KR')}원`
 }
 
 export function programOrders(orders: Order[], programType: ProgramType): Order[] {

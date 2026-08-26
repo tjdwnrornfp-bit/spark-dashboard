@@ -25,6 +25,7 @@ function memberBase(partial: Partial<User> & Pick<User, 'id' | 'username' | 'rol
     sparkPricePerShot: 0,
     sparkPlusPricePerShot: 0,
     sparkSPricePerShot: 0,
+    sparkSPlusPricePerShot: 40,
     ...partial,
   }
 }
@@ -48,7 +49,7 @@ export function makeDemoPaymentSteps(): PaymentStep[] {
 export const DEMO_NOTIFICATIONS: NotificationItem[] = []
 
 export const DEMO_NOTICES: Notice[] = [
-  { id: 'notice-1', title: '스파크 · 스파크 + · 스파크S 접수를 각각 분리해 운영할 수 있습니다.', content: '프로그램별 단가를 회원관리에서 따로 지정하고, 각 접수 탭에서 개별/엑셀 업로드를 진행하세요.', pinned: true, createdAt: '2026-07-31T01:00:00.000Z' },
+  { id: 'notice-1', title: '스파크 · 스파크 + · 스파크S · 스파크S+ 접수를 각각 분리해 운영할 수 있습니다.', content: '프로그램별 단가를 회원관리에서 따로 지정하고, 각 접수 탭에서 개별/엑셀 업로드를 진행하세요.', pinned: true, createdAt: '2026-07-31T01:00:00.000Z' },
   { id: 'notice-2', title: '엑셀 일괄 접수 시작일은 입력한 날짜 그대로 반영됩니다.', content: '시작일 셀은 yyyy-mm-dd 형식 또는 엑셀 날짜 서식을 사용하면 됩니다.', pinned: false, createdAt: '2026-07-31T02:00:00.000Z' },
 ]
 

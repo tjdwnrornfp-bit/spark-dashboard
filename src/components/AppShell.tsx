@@ -1,15 +1,16 @@
 import { useState, type ReactNode } from 'react'
-import type { Page, User } from '../domain/types'
+import type { Page, ProgramType, User } from '../domain/types'
 import { Icon, type IconName } from './Icon'
 import { Logo } from './Logo'
 import { ProgramIcon } from './ProgramIcon'
 
-const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType?: 'spark' | 'spark_plus' | 'spark_s' }> = [
+const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType?: ProgramType }> = [
   { page: 'dashboard', label: '대시보드', icon: 'dashboard' },
   { page: 'notifications', label: '알림센터', icon: 'bell' },
   { page: 'sparkOrders', label: '스파크 접수', programType: 'spark' },
   { page: 'sparkPlusOrders', label: '스파크 + 접수', programType: 'spark_plus' },
   { page: 'sparkSOrders', label: '스파크S 접수', programType: 'spark_s' },
+  { page: 'sparkSPlusOrders', label: '스파크S+ 접수', programType: 'spark_s_plus' },
   { page: 'settlement', label: '정산', icon: 'wallet' },
   { page: 'members', label: '회원관리', icon: 'users' },
   { page: 'operations', label: '운영기록', icon: 'shield' },

@@ -93,6 +93,8 @@ function toSettlementRow(step: PaymentStep, orders: Order[]): SettlementRow {
     registrantSparkPlusAmount: 0,
     registrantSparkSCount: 0,
     registrantSparkSAmount: 0,
+    registrantSparkSPlusCount: 0,
+    registrantSparkSPlusAmount: 0,
   }
 }
 
@@ -234,7 +236,7 @@ export function SettlementPage({
     if (user.role !== 'admin') return {
       page: 1, pageSize: 12, totalPages: 1, companyCount: 0, totalOrders: 0,
       waitingAmount: 0, confirmedAmount: 0, expiredCount: 0, dailyRunningShots: 0,
-      sparkSRunningUnits: 0, companies: [],
+      sparkSRunningUnits: 0, sparkSPlusRunningUnits: 0, companies: [],
     }
 
     const adminStepsByOrder = new Map<string, PaymentStep[]>()
@@ -259,9 +261,11 @@ export function SettlementPage({
         runningCount: 0,
         dailyRunningShots: 0,
         sparkSRunningUnits: 0,
+        sparkSPlusRunningUnits: 0,
         sparkCount: 0,
         sparkPlusCount: 0,
         sparkSCount: 0,
+        sparkSPlusCount: 0,
         lastOrderAt: order.createdAt,
       }
       const adminSteps = adminStepsByOrder.get(order.dbId ?? order.id) ?? adminStepsByOrder.get(order.id) ?? []
@@ -280,11 +284,13 @@ export function SettlementPage({
       if (order.status === '구동중') {
         current.runningCount += 1
         if (order.programType === 'spark_s') current.sparkSRunningUnits += order.dailyShots
+        else if (order.programType === 'spark_s_plus') current.sparkSPlusRunningUnits += order.dailyShots
         else current.dailyRunningShots += order.dailyShots
       }
       if (order.programType === 'spark') current.sparkCount += 1
       else if (order.programType === 'spark_plus') current.sparkPlusCount += 1
-      else current.sparkSCount += 1
+      else if (order.programType === 'spark_s') current.sparkSCount += 1
+      else current.sparkSPlusCount += 1
       if (order.createdAt > current.lastOrderAt) current.lastOrderAt = order.createdAt
       grouped.set(key, current)
     })
@@ -315,6 +321,7 @@ export function SettlementPage({
       expiredCount: filtered.reduce((sum, item) => sum + item.expiredCount, 0),
       dailyRunningShots: filtered.reduce((sum, item) => sum + item.dailyRunningShots, 0),
       sparkSRunningUnits: filtered.reduce((sum, item) => sum + item.sparkSRunningUnits, 0),
+      sparkSPlusRunningUnits: filtered.reduce((sum, item) => sum + item.sparkSPlusRunningUnits, 0),
       companies,
     }
   }, [activeOrders, companyOverviewPage, companyOverviewQuery, companyOverviewSort, incomingSteps, user.role])
@@ -441,6 +448,7 @@ export function SettlementPage({
       const spark = currentProgram('spark')
       const sparkPlus = currentProgram('spark_plus')
       const sparkS = currentProgram('spark_s')
+      const sparkSPlus = currentProgram('spark_s_plus')
       return {
         registrantId,
         username: first?.registrantUsername || '-',
@@ -456,6 +464,8 @@ export function SettlementPage({
         sparkPlusAmount: first?.registrantSparkPlusAmount || sparkPlus.amount,
         sparkSCount: first?.registrantSparkSCount || sparkS.count,
         sparkSAmount: first?.registrantSparkSAmount || sparkS.amount,
+        sparkSPlusCount: first?.registrantSparkSPlusCount || sparkSPlus.count,
+        sparkSPlusAmount: first?.registrantSparkSPlusAmount || sparkSPlus.amount,
       }
     })
   }, [currentRows, orders, user.role])
@@ -790,7 +800,7 @@ export function SettlementPage({
             {user.role !== 'admin' && <label><span>입금자</span><select value={filters.payerId} onChange={(event) => setFilter('payerId', event.target.value)}><option value="">전체 입금자</option>{filterOptions.payers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}
             <label><span>등록자</span><select value={filters.registrantId} onChange={(event) => setFilter('registrantId', event.target.value)}><option value="">전체 등록자</option>{filterOptions.registrants.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
             {user.role === 'admin' && <label><span>등록 그룹</span><select value={filters.groupName} onChange={(event) => setFilter('groupName', event.target.value)}><option value="">전체 그룹</option>{filterOptions.groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
-            <label><span>프로그램</span><select value={filters.programType} onChange={(event) => setFilter('programType', event.target.value as ProgramType | 'all')}><option value="all">전체 프로그램</option><option value="spark">스파크</option><option value="spark_plus">스파크 +</option><option value="spark_s">스파크S</option></select></label>
+            <label><span>프로그램</span><select value={filters.programType} onChange={(event) => setFilter('programType', event.target.value as ProgramType | 'all')}><option value="all">전체 프로그램</option><option value="spark">스파크</option><option value="spark_plus">스파크 +</option><option value="spark_s">스파크S</option><option value="spark_s_plus">스파크S+</option></select></label>
             <label><span>상태</span><select value={filters.status} onChange={(event) => setFilter('status', event.target.value as SettlementFilters['status'])}><option value="waiting">입금대기</option><option value="confirmed">확인완료</option><option value="all">전체</option></select></label>
             <label><span>시작일(부터)</span><input type="date" value={filters.startDateFrom} onChange={(event) => setFilter('startDateFrom', event.target.value)} /></label>
             <label><span>시작일(까지)</span><input type="date" value={filters.startDateTo} onChange={(event) => setFilter('startDateTo', event.target.value)} /></label>
@@ -823,6 +833,7 @@ export function SettlementPage({
                   {company.sparkCount > 0 && <span><b>스파크</b>{company.sparkCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkAmount)}</span>}
                   {company.sparkPlusCount > 0 && <span><b>스파크 +</b>{company.sparkPlusCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkPlusAmount)}</span>}
                   {company.sparkSCount > 0 && <span><b>스파크S</b>{company.sparkSCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkSAmount)}</span>}
+                  {company.sparkSPlusCount > 0 && <span><b>스파크S+</b>{company.sparkSPlusCount.toLocaleString('ko-KR')}건 · {formatWon(company.sparkSPlusAmount)}</span>}
                 </div>
                 <div className="settlement-company-actions">
                   <span>현재 페이지 {company.rows.length.toLocaleString('ko-KR')}건 표시</span>
@@ -896,7 +907,7 @@ export function SettlementPage({
           <article><span>전체 접수</span><strong>{activeCompanyOverview.totalOrders.toLocaleString('ko-KR')}건</strong></article>
           <article className="pending"><span>입금 대기</span><strong>{formatWon(activeCompanyOverview.waitingAmount)}</strong></article>
           <article className="confirmed"><span>입금 완료</span><strong>{formatWon(activeCompanyOverview.confirmedAmount)}</strong></article>
-          <article><span>일일 구동 타수</span><strong>{activeCompanyOverview.dailyRunningShots.toLocaleString('ko-KR')}타</strong>{activeCompanyOverview.sparkSRunningUnits > 0 && <small>스파크S {activeCompanyOverview.sparkSRunningUnits.toLocaleString('ko-KR')}건</small>}</article>
+          <article><span>일일 구동 타수</span><strong>{activeCompanyOverview.dailyRunningShots.toLocaleString('ko-KR')}타</strong>{(activeCompanyOverview.sparkSRunningUnits > 0 || activeCompanyOverview.sparkSPlusRunningUnits > 0) && <small>스파크S {activeCompanyOverview.sparkSRunningUnits.toLocaleString('ko-KR')}건 · 스파크S+ {activeCompanyOverview.sparkSPlusRunningUnits.toLocaleString('ko-KR')}건</small>}</article>
         </div>
 
         {companyOverviewLoading && activeCompanyOverview.companies.length === 0 ? <div className="empty-state">업체별 현황을 불러오는 중입니다.</div> : activeCompanyOverview.companies.length === 0 ? <div className="empty-state">조건에 맞는 업체가 없습니다.</div> : <div className="company-overview-grid">
@@ -917,12 +928,14 @@ export function SettlementPage({
               <div><span>구동중 작업</span><strong>{company.runningCount.toLocaleString('ko-KR')}건</strong></div>
               <div><span>총 일일 구동 타수</span><strong>{company.dailyRunningShots.toLocaleString('ko-KR')}타</strong></div>
               {company.sparkSRunningUnits > 0 && <div><span>스파크S 일일 구동</span><strong>{company.sparkSRunningUnits.toLocaleString('ko-KR')}건</strong></div>}
+              {company.sparkSPlusRunningUnits > 0 && <div><span>스파크S+ 일일 구동</span><strong>{company.sparkSPlusRunningUnits.toLocaleString('ko-KR')}건</strong></div>}
             </div>
 
             <div className="company-overview-programs">
               <span><b>스파크</b>{company.sparkCount.toLocaleString('ko-KR')}건</span>
               <span><b>스파크 +</b>{company.sparkPlusCount.toLocaleString('ko-KR')}건</span>
               <span><b>스파크S</b>{company.sparkSCount.toLocaleString('ko-KR')}건</span>
+              <span><b>스파크S+</b>{company.sparkSPlusCount.toLocaleString('ko-KR')}건</span>
             </div>
 
             <footer>

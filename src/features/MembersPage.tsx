@@ -51,7 +51,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
   const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('all')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [role, setRole] = useState<MemberRole>('agency')
-  const [prices, setPrices] = useState<ProgramPriceMap>({ spark: '', spark_plus: '', spark_s: '' } as unknown as ProgramPriceMap)
+  const [prices, setPrices] = useState<ProgramPriceMap>({ spark: '', spark_plus: '', spark_s: '', spark_s_plus: 40 } as unknown as ProgramPriceMap)
   const [groupName, setGroupName] = useState('')
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
@@ -105,6 +105,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
     spark: Number(prices.spark),
     spark_plus: Number(prices.spark_plus),
     spark_s: Number(prices.spark_s),
+    spark_s_plus: Number(prices.spark_s_plus),
   }
 
   const save = async (approvalStatus: 'approved' | 'rejected') => {
@@ -113,11 +114,11 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
     if (approvalStatus === 'approved' && accountType !== 'manager') {
       const invalid = Object.values(numericPrices).some((value) => !Number.isInteger(value) || value < 1)
       if (invalid) {
-        setError('세 프로그램 단가를 모두 1원 이상의 정수로 입력해 주세요.')
+        setError('네 프로그램 단가를 모두 1원 이상의 정수로 입력해 주세요.')
         return
       }
       if (!isAdmin && !isManager) {
-        if (numericPrices.spark <= parentPrices.spark || numericPrices.spark_plus <= parentPrices.spark_plus || numericPrices.spark_s <= parentPrices.spark_s) {
+        if (numericPrices.spark <= parentPrices.spark || numericPrices.spark_plus <= parentPrices.spark_plus || numericPrices.spark_s <= parentPrices.spark_s || numericPrices.spark_s_plus <= parentPrices.spark_s_plus) {
           setError('하위 회원 단가는 각 프로그램마다 내 단가보다 높아야 합니다.')
           return
         }
@@ -275,7 +276,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
             </>
           ) : (
             <>
-              <div><span>하위 단가 기준</span><strong>프로그램별 +1원 이상</strong><small>스파크 {formatWon(parentPrices.spark + 1)} · 스파크+ {formatWon(parentPrices.spark_plus + 1)} · 스파크S {formatWon(parentPrices.spark_s + 1)}</small></div>
+              <div><span>하위 단가 기준</span><strong>프로그램별 +1원 이상</strong><small>스파크 {formatWon(parentPrices.spark + 1)} · 스파크+ {formatWon(parentPrices.spark_plus + 1)} · 스파크S {formatWon(parentPrices.spark_s + 1)} · 스파크S+ {formatWon(parentPrices.spark_s_plus + 1)}</small></div>
               <div><span>입금 계좌</span><strong>{user.bank && user.accountNumber ? `${user.bank} ${user.accountNumber}` : '미등록'}</strong><small>{user.accountHolder || '내 정보에서 계좌를 등록해야 승인할 수 있습니다.'}</small></div>
             </>
           )}
@@ -286,8 +287,8 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
         <div className="filter-tabs member-tabs">
           {([['all', '전체'], ['pending', '승인대기'], ['approved', '승인'], ['rejected', '반려']] as const).map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}<span>{counts[value]}</span></button>)}
         </div>
-        <div className="desktop-table"><table className="members-table"><thead><tr><th>아이디</th>{isAdmin && <th>전화번호</th>}{isAdmin && <th>그룹명</th>}{isAdmin && <th>관리 관계</th>}<th>회원유형</th><th>스파크</th><th>스파크 +</th><th>스파크S</th><th>승인상태</th><th>가입 신청일</th><th>관리</th></tr></thead><tbody>{visible.map((member) => { const memberPrices = getProgramPriceMap(member); return <tr key={member.id} className={selectedId === member.id ? 'selected-row' : ''}><td><strong>{member.username}</strong><small className="table-subtext">코드 {member.referralCode || '-'}</small></td>{isAdmin && <td><strong className="member-phone-cell">{formatPhoneNumber(member.phoneNumber)}</strong></td>}{isAdmin && <td>{member.groupName || '-'}</td>}{isAdmin && <td>{managementLabel(member)}</td>}<td>{memberTypeLabel(member)}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'}</td><td><ApprovalBadge status={member.approvalStatus} /></td><td>{formatDateTime(member.requestedAt)}</td><td><button className="dark-small-button" onClick={() => open(member)}>{member.approvalStatus === 'approved' ? '수정' : '검토'}</button></td></tr>})}</tbody></table></div>
-        <div className="mobile-member-list">{visible.map((member) => { const memberPrices = getProgramPriceMap(member); return <article key={member.id}><div><strong>{member.username}</strong><ApprovalBadge status={member.approvalStatus} /></div><p>{isAdmin ? `${managementLabel(member)} · ` : ''}{memberTypeLabel(member)}</p>{!member.isOperationsManager && <p>스파크 {memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'} · 스파크+ {memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'} · 스파크S {memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'}</p>}{isAdmin && <p>전화번호 {formatPhoneNumber(member.phoneNumber)}</p>}{isAdmin && <p>그룹 {member.groupName || '-'}</p>}<button className="secondary-button small" onClick={() => open(member)}>회원 검토</button></article>})}</div>
+        <div className="desktop-table"><table className="members-table"><thead><tr><th>아이디</th>{isAdmin && <th>전화번호</th>}{isAdmin && <th>그룹명</th>}{isAdmin && <th>관리 관계</th>}<th>회원유형</th><th>스파크</th><th>스파크 +</th><th>스파크S</th><th>스파크S+</th><th>승인상태</th><th>가입 신청일</th><th>관리</th></tr></thead><tbody>{visible.map((member) => { const memberPrices = getProgramPriceMap(member); return <tr key={member.id} className={selectedId === member.id ? 'selected-row' : ''}><td><strong>{member.username}</strong><small className="table-subtext">코드 {member.referralCode || '-'}</small></td>{isAdmin && <td><strong className="member-phone-cell">{formatPhoneNumber(member.phoneNumber)}</strong></td>}{isAdmin && <td>{member.groupName || '-'}</td>}{isAdmin && <td>{managementLabel(member)}</td>}<td>{memberTypeLabel(member)}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s_plus > 0 ? formatWon(memberPrices.spark_s_plus) : '-'}</td><td><ApprovalBadge status={member.approvalStatus} /></td><td>{formatDateTime(member.requestedAt)}</td><td><button className="dark-small-button" onClick={() => open(member)}>{member.approvalStatus === 'approved' ? '수정' : '검토'}</button></td></tr>})}</tbody></table></div>
+        <div className="mobile-member-list">{visible.map((member) => { const memberPrices = getProgramPriceMap(member); return <article key={member.id}><div><strong>{member.username}</strong><ApprovalBadge status={member.approvalStatus} /></div><p>{isAdmin ? `${managementLabel(member)} · ` : ''}{memberTypeLabel(member)}</p>{!member.isOperationsManager && <p>스파크 {memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'} · 스파크+ {memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'} · 스파크S {memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'} · 스파크S+ {memberPrices.spark_s_plus > 0 ? formatWon(memberPrices.spark_s_plus) : '-'}</p>}{isAdmin && <p>전화번호 {formatPhoneNumber(member.phoneNumber)}</p>}{isAdmin && <p>그룹 {member.groupName || '-'}</p>}<button className="secondary-button small" onClick={() => open(member)}>회원 검토</button></article>})}</div>
 
         {visible.length === 0 && <div className="empty-state fill-empty-state">조건에 맞는 회원이 없습니다.</div>}
 
@@ -299,6 +300,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
               <label><span>스파크 단가</span><div className="input-unit"><input type="number" min={minFor('spark')} step="1" value={prices.spark || ''} onChange={(event) => setPrices((current) => ({ ...current, spark: Number(event.target.value) || 0 }))} /><span>원</span></div></label>
               <label><span>스파크 + 단가</span><div className="input-unit"><input type="number" min={minFor('spark_plus')} step="1" value={prices.spark_plus || ''} onChange={(event) => setPrices((current) => ({ ...current, spark_plus: Number(event.target.value) || 0 }))} /><span>원</span></div></label>
               <label><span>스파크S 단가</span><div className="input-unit"><input type="number" min={minFor('spark_s')} step="1" value={prices.spark_s || ''} onChange={(event) => setPrices((current) => ({ ...current, spark_s: Number(event.target.value) || 0 }))} /><span>원</span></div></label>
+              <label><span>스파크S+ 단가</span><div className="input-unit"><input type="number" min={minFor('spark_s_plus')} step="1" value={prices.spark_s_plus || ''} onChange={(event) => setPrices((current) => ({ ...current, spark_s_plus: Number(event.target.value) || 0 }))} /><span>원</span></div></label>
             </>}
             {selectedManagerAccount && <div className="member-static-info manager-account-info"><span>중간관리자 권한</span><strong>하위 대행사 승인 · 단가 지정</strong><small>작업 접수·정산·운영기록 권한은 부여되지 않습니다.</small></div>}
             {isAdmin && <div className="member-static-info"><span>가입 전화번호</span><strong>{formatPhoneNumber(selected.phoneNumber)}</strong><small>회원가입 시 입력한 연락처입니다.</small></div>}

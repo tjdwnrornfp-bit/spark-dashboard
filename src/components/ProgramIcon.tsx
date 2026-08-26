@@ -43,6 +43,41 @@ export function ProgramIcon({ programType, size = 34, className = '' }: ProgramI
     )
   }
 
+  if (programType === 'spark_s_plus') {
+    const gradientId = `spark-s-plus-${uid}`
+    const glowId = `spark-s-plus-glow-${uid}`
+
+    return (
+      <svg className={classNames} width={size} height={size} viewBox="0 0 40 40" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id={gradientId} x1="3" y1="2" x2="37" y2="39" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#74E0FF" />
+            <stop offset="0.46" stopColor="#347FEF" />
+            <stop offset="1" stopColor="#5031B8" />
+          </linearGradient>
+          <radialGradient id={glowId} cx="0" cy="0" r="1" gradientTransform="translate(11 7) rotate(46) scale(29)">
+            <stop stopColor="#FFFFFF" stopOpacity="0.36" />
+            <stop offset="1" stopColor="#FFFFFF" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+
+        <rect x="1" y="1" width="38" height="38" rx="11" fill={`url(#${gradientId})`} />
+        <rect x="1" y="1" width="38" height="38" rx="11" fill={`url(#${glowId})`} />
+        <rect x="1.6" y="1.6" width="36.8" height="36.8" rx="10.4" fill="none" stroke="#FFFFFF" strokeOpacity="0.24" strokeWidth="1.2" />
+
+        <g transform="translate(8.4 29.9) scale(0.0125 -0.0125)">
+          <path
+            d="M675 -24C1042 -24 1266 153 1266 440C1266 664 1125 795 807 862L664 893C481 933 407 984 407 1076C407 1185 514 1261 666 1261C826 1261 931 1174 942 1033H1230C1221 1333 1008 1514 665 1514C326 1514 99 1332 99 1061C99 848 242 711 537 647L694 613C883 572 961 516 961 420C961 304 848 229 677 229C486 229 371 325 367 489H70C70 165 293 -24 675 -24Z"
+            fill="#FFFFFF"
+          />
+        </g>
+        <path d="M29.6 15.2v12M23.6 21.2h12" stroke="#FFFFFF" strokeWidth="2.8" strokeLinecap="round" />
+        <path d="M31.4 7.1l.45 1.5 1.5.45-1.5.45-.45 1.5-.45-1.5-1.5-.45 1.5-.45.45-1.5Z" fill="#DDF9FF" />
+        <circle cx="8.8" cy="31.2" r="1" fill="#D9E8FF" />
+      </svg>
+    )
+  }
+
   if (programType === 'spark_s') {
     const gradientId = `spark-s-${uid}`
     const glowId = `spark-s-glow-${uid}`

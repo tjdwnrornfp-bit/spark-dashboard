@@ -65,6 +65,7 @@ export function mapProfile(row: Record<string, unknown>): User {
     sparkPricePerShot: sparkPrice,
     sparkPlusPricePerShot: numberValue(row.spark_plus_price_per_shot),
     sparkSPricePerShot: numberValue(row.spark_s_price_per_shot),
+    sparkSPlusPricePerShot: numberValue(row.spark_s_plus_price_per_shot),
     active: Boolean(row.active),
     requestedAt: stringValue(row.requested_at),
     approvedAt: nullableString(row.approved_at),
@@ -161,6 +162,7 @@ function mapBulkProgramTransferPreview(row: Record<string, unknown>): BulkProgra
       spark: numberValue(programCounts.spark),
       spark_plus: numberValue(programCounts.spark_plus),
       spark_s: numberValue(programCounts.spark_s),
+      spark_s_plus: numberValue(programCounts.spark_s_plus),
     },
     targetProgram: row.targetProgram as ProgramType,
     expectedAdditionalAmount: numberValue(row.expectedAdditionalAmount),
@@ -382,7 +384,7 @@ export async function createRemoteOrder(params: {
   memo: string
 }): Promise<Order> {
   const client = requiredClient()
-  const { data, error } = await client.rpc('create_order', {
+  const { data, error } = await client.rpc('create_order_v10', {
     p_program_type: params.programType,
     p_place_url: params.placeUrl,
     p_mid: params.mid,
@@ -410,7 +412,7 @@ export async function createRemoteOrdersBulk(drafts: OrderDraft[]): Promise<Orde
     start_date: draft.startDate,
     memo: draft.memo.trim(),
   }))
-  const { data, error } = await client.rpc('create_orders_bulk', { p_items: items })
+  const { data, error } = await client.rpc('create_orders_bulk_v10', { p_items: items })
   if (error) throw error
   return (data ?? []).map((row: Record<string, unknown>) => mapOrder(row))
 }
@@ -596,13 +598,14 @@ export async function resetRemoteMemberPassword(memberId: string, newPassword: s
 
 export async function reviewRemoteMember(params: Omit<MemberReviewInput, 'member'> & { memberId: string; memberUpdatedAt: string }): Promise<User> {
   const client = requiredClient()
-  const { data, error } = await client.rpc('review_member_v93', {
+  const { data, error } = await client.rpc('review_member_v10', {
     p_member_id: params.memberId,
     p_role: params.role === 'manager' ? 'agency' : params.role,
     p_is_operations_manager: params.role === 'manager',
     p_spark_price_per_shot: params.prices.spark,
     p_spark_plus_price_per_shot: params.prices.spark_plus,
     p_spark_s_price_per_shot: params.prices.spark_s,
+    p_spark_s_plus_price_per_shot: params.prices.spark_s_plus,
     p_approval_status: params.approvalStatus,
     p_group_name: params.groupName,
     p_expected_updated_at: params.memberUpdatedAt,
@@ -737,6 +740,8 @@ function mapSettlementRow(row: Record<string, unknown>): SettlementRow {
     registrantSparkPlusAmount: numberValue(row.registrantSparkPlusAmount),
     registrantSparkSCount: numberValue(row.registrantSparkSCount),
     registrantSparkSAmount: numberValue(row.registrantSparkSAmount),
+    registrantSparkSPlusCount: numberValue(row.registrantSparkSPlusCount),
+    registrantSparkSPlusAmount: numberValue(row.registrantSparkSPlusAmount),
   }
 }
 
@@ -912,9 +917,11 @@ export async function fetchAdminCompanyOverviewV96(params: {
       runningCount: numberValue(row.runningCount),
       dailyRunningShots: numberValue(row.dailyRunningShots),
       sparkSRunningUnits: numberValue(row.sparkSRunningUnits),
+      sparkSPlusRunningUnits: numberValue(row.sparkSPlusRunningUnits),
       sparkCount: numberValue(row.sparkCount),
       sparkPlusCount: numberValue(row.sparkPlusCount),
       sparkSCount: numberValue(row.sparkSCount),
+      sparkSPlusCount: numberValue(row.sparkSPlusCount),
       lastOrderAt: stringValue(row.lastOrderAt),
     }
   }) : []
@@ -930,6 +937,7 @@ export async function fetchAdminCompanyOverviewV96(params: {
     expiredCount: numberValue(result.expiredCount),
     dailyRunningShots: numberValue(result.dailyRunningShots),
     sparkSRunningUnits: numberValue(result.sparkSRunningUnits),
+    sparkSPlusRunningUnits: numberValue(result.sparkSPlusRunningUnits),
     companies,
   }
 }
