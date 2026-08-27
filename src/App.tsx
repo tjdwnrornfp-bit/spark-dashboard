@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentReversalResult, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SettlementRow, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -32,6 +32,7 @@ import {
   previewRemoteOrderProgramTransfer,
   resetRemoteMemberPassword,
   restoreRemoteOrder,
+  reverseRemotePaymentConfirmation,
   reviewRemoteMember,
   saveRemoteAccount,
   saveRemoteSettings,
@@ -41,6 +42,7 @@ import {
 } from './lib/backend'
 import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSecret, usernameToAuthEmail, validatePassword } from './lib/auth'
 import { calculateAmount } from './lib/money'
+import { todayInSeoul } from './lib/date'
 import { applyScheduledTransitions, createOrder, extractMid, transitionOrder } from './lib/order'
 import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, labelForProgram, PROGRAM_PAGE_MAP } from './lib/program'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
@@ -759,10 +761,67 @@ export default function App() {
       setLocalOrders((current) => current.map((order) => {
         if ((order.dbId ?? order.id) !== step.orderDbId) return order
         const settled = order.status === '입금대기' ? transitionOrder(order, '입금완료') : order
-        return { ...settled, programTransferState: 'none', programTransferDifference: 0 }
+        return { ...settled, programTransferState: 'none', programTransferDifference: 0, settlementReversalPending: false }
       }))
       const target = localOrders.find((order) => (order.dbId ?? order.id) === step.orderDbId)
       if (target) setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: confirmedAt, userId: target.createdBy, role: 'all', title: '전체 입금 확인 완료', message: `${target.storeName} 작업의 입금 확인이 완료되었습니다.`, read: false, orderId: target.id }, ...current])
+    }
+  }
+
+  const handleReversePayment = async (step: SettlementRow, reason: string): Promise<PaymentReversalResult> => {
+    if (!user || user.role !== 'admin' || user.isOperationsManager) throw new Error('관리자만 입금확인을 취소할 수 있습니다.')
+    if (!step.confirmedAt) throw new Error('이미 입금대기 상태이거나 확인 기록이 변경되었습니다.')
+    if (reason.trim().length < 2) throw new Error('취소 사유를 2자 이상 입력해 주세요.')
+
+    if (isSupabaseConfigured) {
+      const result = await reverseRemotePaymentConfirmation({
+        stepId: step.id,
+        expectedConfirmedAt: step.confirmedAt,
+        expectedOrderVersion: step.orderLockVersion,
+        reason,
+      })
+      await refreshRemote()
+      return result
+    }
+
+    const targetOrder = localOrders.find((order) => (order.dbId ?? order.id) === step.orderDbId)
+    if (!targetOrder) throw new Error('작업을 찾을 수 없습니다.')
+    if (localPaymentSteps.some((candidate) => candidate.orderDbId === step.orderDbId && candidate.stepOrder > step.stepOrder && candidate.confirmedAt)) {
+      throw new Error('이 확인 이후의 정산 단계가 이미 진행되어 단독으로 취소할 수 없습니다.')
+    }
+
+    const today = todayInSeoul()
+    if (targetOrder.status === '입금완료' && (targetOrder.activatedAt || targetOrder.startDate <= today)) {
+      throw new Error('시작일이 이미 도래했거나 운영 이력이 있는 입금완료 주문은 안전하게 입금대기로 복구할 수 없어 취소할 수 없습니다.')
+    }
+
+    const reversedAt = new Date().toISOString()
+    const nextStatus: OrderStatus = targetOrder.status === '입금완료' ? '입금대기' : targetOrder.status
+    const operationStatusPreserved = ['구동중', '정지', '만료'].includes(targetOrder.status)
+    const reversedSteps = localPaymentSteps.map((candidate) => candidate.id === step.id ? { ...candidate, confirmedAt: null } : candidate)
+    const normalizedSteps = reversedSteps.map((candidate) => {
+      const previousPendingCount = reversedSteps.filter((previous) => previous.orderDbId === candidate.orderDbId && previous.stepOrder < candidate.stepOrder && !previous.confirmedAt).length
+      return { ...candidate, previousPendingCount, canConfirm: !candidate.confirmedAt && previousPendingCount === 0 }
+    })
+    setLocalPaymentSteps(normalizedSteps)
+    setLocalOrders((current) => current.map((order) => (order.dbId ?? order.id) === step.orderDbId ? {
+      ...order,
+      status: nextStatus,
+      activatedAt: nextStatus === '입금대기' ? null : order.activatedAt,
+      paymentNotifiedAt: nextStatus === '입금대기' ? null : order.paymentNotifiedAt,
+      settlementReversalPending: true,
+      lockVersion: order.lockVersion + 1,
+      updatedAt: reversedAt,
+    } : order))
+    return {
+      paymentStepId: step.id,
+      orderId: step.orderDbId,
+      orderStatus: nextStatus,
+      orderLockVersion: targetOrder.lockVersion + 1,
+      operationStatusPreserved,
+      restoredToWaiting: nextStatus === '입금대기' && targetOrder.status === '입금완료',
+      settlementReversalPending: true,
+      reversedAt,
     }
   }
 
@@ -812,7 +871,7 @@ export default function App() {
     {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
-    {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
+    {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}

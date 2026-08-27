@@ -16,6 +16,7 @@ import type {
   OrderDraft,
   OrderStatus,
   PaymentAccount,
+  PaymentReversalResult,
   OperationsHealth,
   PaymentStep,
   ProgramTransferPreview,
@@ -118,6 +119,7 @@ export function mapOrder(row: Record<string, unknown>): Order {
     programTransferState: row.program_transfer_state === 'payment_pending' ? 'payment_pending' : 'none',
     programTransferDifference: numberValue(row.program_transfer_difference),
     lastProgramTransferAt: nullableString(row.last_program_transfer_at),
+    settlementReversalPending: Boolean(row.settlement_reversal_pending),
     lockVersion: Math.max(1, numberValue(row.lock_version)),
     updatedAt: stringValue(row.updated_at),
   }
@@ -632,6 +634,33 @@ export async function confirmRemotePaymentStep(stepId: string): Promise<PaymentS
   return mapPaymentStep(data as Record<string, unknown>)
 }
 
+export async function reverseRemotePaymentConfirmation(params: {
+  stepId: string
+  expectedConfirmedAt: string
+  expectedOrderVersion: number
+  reason: string
+}): Promise<PaymentReversalResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('admin_reverse_payment_confirmation_v101', {
+    p_step_id: params.stepId,
+    p_expected_confirmed_at: params.expectedConfirmedAt,
+    p_expected_order_version: params.expectedOrderVersion,
+    p_reason: params.reason.trim(),
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  return {
+    paymentStepId: stringValue(result.paymentStepId),
+    orderId: stringValue(result.orderId),
+    orderStatus: result.orderStatus as PaymentReversalResult['orderStatus'],
+    orderLockVersion: numberValue(result.orderLockVersion),
+    operationStatusPreserved: Boolean(result.operationStatusPreserved),
+    restoredToWaiting: Boolean(result.restoredToWaiting),
+    settlementReversalPending: Boolean(result.settlementReversalPending),
+    reversedAt: stringValue(result.reversedAt),
+  }
+}
+
 export async function saveRemoteSettings(settings: AppSettings): Promise<AppSettings> {
   const client = requiredClient()
   const { data, error } = await client.from('app_settings').update({
@@ -730,6 +759,9 @@ function mapSettlementRow(row: Record<string, unknown>): SettlementRow {
     registrantUsername: stringValue(row.registrantUsername),
     registrantGroupName: stringValue(row.registrantGroupName),
     startDate: stringValue(row.startDate),
+    orderStatus: (row.orderStatus || '입금대기') as SettlementRow['orderStatus'],
+    orderLockVersion: Math.max(1, numberValue(row.orderLockVersion)),
+    settlementReversalPending: Boolean(row.settlementReversalPending),
     registrantItemCount: numberValue(row.registrantItemCount),
     registrantTotalAmount: numberValue(row.registrantTotalAmount),
     registrantReadyCount: numberValue(row.registrantReadyCount),
@@ -760,11 +792,20 @@ function settlementRpcParams(filters: SettlementFilters) {
 
 export async function fetchSettlementPageV92(filters: SettlementFilters, page = 1, pageSize = 50): Promise<SettlementPageResult> {
   const client = requiredClient()
-  let { data, error } = await client.rpc('get_my_settlement_page_v94', {
+  let { data, error } = await client.rpc('get_my_settlement_page_v101', {
     ...settlementRpcParams(filters),
     p_page: page,
     p_page_size: pageSize,
   })
+  if (error && ['PGRST202', '42883'].includes(String(error.code ?? ''))) {
+    const fallback = await client.rpc('get_my_settlement_page_v94', {
+      ...settlementRpcParams(filters),
+      p_page: page,
+      p_page_size: pageSize,
+    })
+    data = fallback.data
+    error = fallback.error
+  }
   if (error && ['PGRST202', '42883'].includes(String(error.code ?? ''))) {
     const fallback = await client.rpc('get_my_settlement_page_v92', {
       ...settlementRpcParams(filters),

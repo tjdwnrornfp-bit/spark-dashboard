@@ -8,6 +8,7 @@ import type {
   CompanyOverviewSort,
   Order,
   PaymentAccount,
+  PaymentReversalResult,
   PaymentStep,
   ProgramType,
   SettlementBatchHistoryItem,
@@ -83,6 +84,9 @@ function toSettlementRow(step: PaymentStep, orders: Order[]): SettlementRow {
     registrantUsername: order?.creatorUsername ?? '',
     registrantGroupName: order?.creatorGroupName ?? '',
     startDate: order?.startDate ?? '',
+    orderStatus: order?.status ?? '입금대기',
+    orderLockVersion: order?.lockVersion ?? 1,
+    settlementReversalPending: order?.settlementReversalPending ?? false,
     registrantItemCount: 0,
     registrantTotalAmount: 0,
     registrantReadyCount: 0,
@@ -138,6 +142,7 @@ export function SettlementPage({
   settings,
   onSettingsChange,
   onConfirmPayment,
+  onReversePayment,
   onConfirmSettlementQuote,
 }: {
   user: User
@@ -148,12 +153,16 @@ export function SettlementPage({
   settings: AppSettings
   onSettingsChange: (settings: AppSettings) => Promise<void>
   onConfirmPayment: (step: PaymentStep) => Promise<void>
+  onReversePayment: (step: SettlementRow, reason: string) => Promise<PaymentReversalResult>
   onConfirmSettlementQuote: (quoteId: string, confirmations: SettlementConfirmationInput[], memo: string) => Promise<SettlementBatchResult>
 }) {
   const [editing, setEditing] = useState(false)
   const [form, setForm] = useState(settings)
   const [saving, setSaving] = useState(false)
   const [changingId, setChangingId] = useState<string | null>(null)
+  const [reversalStep, setReversalStep] = useState<SettlementRow | null>(null)
+  const [reversalReason, setReversalReason] = useState('')
+  const [reversing, setReversing] = useState(false)
 
   const [filters, setFilters] = useState<SettlementFilters>(EMPTY_FILTERS)
   const [queryInput, setQueryInput] = useState('')
@@ -583,6 +592,40 @@ export function SettlementPage({
     }
   }
 
+  const openPaymentReversal = (step: SettlementRow) => {
+    if (user.role !== 'admin' || !step.confirmedAt) return
+    setReversalStep(step)
+    setReversalReason('')
+  }
+
+  const reversePayment = async () => {
+    if (!reversalStep || reversing) return
+    if (reversalReason.trim().length < 2) {
+      window.alert('취소 사유를 2자 이상 입력해 주세요.')
+      return
+    }
+    setReversing(true)
+    try {
+      await onReversePayment(reversalStep, reversalReason)
+      await refreshSettlementData()
+      setReversalStep(null)
+      setReversalReason('')
+    } catch (error) {
+      window.alert(getErrorMessage(error))
+    } finally {
+      setReversing(false)
+    }
+  }
+
+  const confirmationAction = (step: SettlementRow) => step.confirmedAt ? (
+    <div className="payment-confirmation-actions">
+      <span className="payment-confirmed-label">확인완료</span>
+      {user.role === 'admin' && <button className="payment-reverse-button" disabled={reversing} onClick={() => openPaymentReversal(step)}>확인 취소</button>}
+    </div>
+  ) : (
+    <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>
+  )
+
   const openBatchQuote = async () => {
     if (selectedCount === 0 || quoteLoading) return
     setQuoteLoading(true)
@@ -796,7 +839,7 @@ export function SettlementPage({
           </div>
 
           <div className="settlement-filter-bar">
-            <label className="settlement-search-field"><span>업체·MID·주문번호</span><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder="검색어 입력" /></label>
+            <label className="settlement-search-field"><span>{user.role === 'admin' ? '상호명' : '업체·MID·주문번호'}</span><input value={queryInput} onChange={(event) => setQueryInput(event.target.value)} placeholder={user.role === 'admin' ? '상호명 검색' : '검색어 입력'} /></label>
             {user.role !== 'admin' && <label><span>입금자</span><select value={filters.payerId} onChange={(event) => setFilter('payerId', event.target.value)}><option value="">전체 입금자</option>{filterOptions.payers.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>}
             <label><span>등록자</span><select value={filters.registrantId} onChange={(event) => setFilter('registrantId', event.target.value)}><option value="">전체 등록자</option>{filterOptions.registrants.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}</select></label>
             {user.role === 'admin' && <label><span>등록 그룹</span><select value={filters.groupName} onChange={(event) => setFilter('groupName', event.target.value)}><option value="">전체 그룹</option>{filterOptions.groups.map((group) => <option key={group} value={group}>{group}</option>)}</select></label>}
@@ -841,14 +884,16 @@ export function SettlementPage({
                 </div>
                 <div className="desktop-table settlement-company-table-wrap settlement-company-table-compact-wrap">
                   <table className="simple-table settlement-company-table settlement-company-table-compact">
-                    <thead><tr><th className="checkbox-column"></th><th>프로그램</th><th>단가</th><th>예정 입금액</th><th>상태</th><th>확인</th></tr></thead>
+                    <thead><tr><th className="checkbox-column"></th><th>프로그램</th><th>상호명</th><th>시작일</th><th>단가</th><th>예정 입금액</th><th>상태</th><th>확인</th></tr></thead>
                     <tbody>{company.rows.map((step) => <tr key={step.id} className={isRowSelected(step) ? 'selected-settlement-row' : ''}>
                       <td className="checkbox-column"><input type="checkbox" aria-label={`${labelForProgram(step.programType)} ${formatWon(step.totalAmount)} 선택`} checked={isRowSelected(step)} disabled={Boolean(step.confirmedAt) || !step.canConfirm} onChange={() => toggleRow(step)} /></td>
                       <td><strong>{labelForProgram(step.programType)}</strong></td>
+                      <td className="settlement-identity-cell"><strong>{step.storeName}</strong></td>
+                      <td className="settlement-start-date">{formatDate(step.startDate)}</td>
                       <td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td>
                       <td><strong>{formatWon(step.totalAmount)}</strong></td>
                       <td>{step.confirmedAt ? <span className="payment-confirmed-text">{formatDateTime(step.confirmedAt)} 확인</span> : step.canConfirm ? <span className="payment-waiting-text">입금대기</span> : <span className="payment-chain-waiting-text">이전 단계 확인 대기</span>}</td>
-                      <td>{step.confirmedAt ? <span className="muted">완료</span> : <button className="primary-button table-action-button payment-confirm-button" disabled={changingId === step.id || !step.canConfirm} onClick={() => void confirmPayment(step)}>{changingId === step.id ? '처리 중' : step.canConfirm ? '입금확인' : '순서 대기'}</button>}</td>
+                      <td>{confirmationAction(step)}</td>
                     </tr>)}</tbody>
                   </table>
                 </div>
@@ -965,6 +1010,19 @@ export function SettlementPage({
         <div><strong>{selectedCount.toLocaleString('ko-KR')}건 선택</strong><span>예정 입금액 {formatWon(selectedAmount)}</span>{selectAllFiltered && <small>검색 결과 전체 선택 · 제외 {excludedRows.size}건</small>}</div>
         <div><button className="secondary-button" onClick={clearSelection}>선택 해제</button><button className="primary-button" disabled={quoteLoading} onClick={() => void openBatchQuote()}>{quoteLoading ? '금액 확인 중...' : user.role === 'admin' ? '선택 작업 입금확인' : '일괄 입금확인'}</button></div>
       </div>}
+
+      {reversalStep && <Modal title="입금확인 취소" description="확인 기록은 삭제하지 않고 관리자 감사로그에 취소 사유와 함께 남습니다." className="payment-reversal-modal" onClose={() => { if (!reversing) setReversalStep(null) }} footer={<><button className="secondary-button" disabled={reversing} onClick={() => setReversalStep(null)}>닫기</button><button className="danger-button" disabled={reversing || reversalReason.trim().length < 2} onClick={() => void reversePayment()}>{reversing ? '취소 처리 중...' : '입금확인 취소'}</button></>}>
+        <div className="payment-reversal-summary">
+          <div><span>상호명</span><strong>{reversalStep.storeName}</strong></div>
+          <div><span>프로그램</span><strong>{labelForProgram(reversalStep.programType)}</strong></div>
+          <div><span>시작일</span><strong>{formatDate(reversalStep.startDate)}</strong></div>
+          <div><span>확인 금액</span><strong>{formatWon(reversalStep.totalAmount)}</strong></div>
+          <div className="wide"><span>기존 확인시각</span><strong>{formatDateTime(reversalStep.confirmedAt ?? '')}</strong></div>
+        </div>
+        {['구동중', '정지', '만료'].includes(reversalStep.orderStatus) && <div className="payment-reversal-warning"><Icon name="shield" size={17} /><span>현재 주문은 {reversalStep.orderStatus} 상태입니다. 입금확인 기록만 취소되며 작업 운영 상태는 변경되지 않습니다.</span></div>}
+        {reversalStep.orderStatus === '입금완료' && <div className="payment-reversal-note"><Icon name="shield" size={17} /><span>아직 시작 전인 주문만 입금대기로 안전하게 복구됩니다. 시작일이 이미 도래했거나 운영 이력이 있으면 서버에서 취소를 차단합니다.</span></div>}
+        <label className="payment-reversal-reason"><span>취소 사유 <b>필수</b></span><textarea value={reversalReason} maxLength={500} rows={4} disabled={reversing} placeholder="예: 같은 금액의 다른 작업을 잘못 확인함" onChange={(event) => setReversalReason(event.target.value)} /><small>{reversalReason.trim().length.toLocaleString('ko-KR')} / 500자</small></label>
+      </Modal>}
 
       {quote && <Modal title={user.role === 'admin' && quoteCompanyLabel ? `${quoteCompanyLabel} 입금확인` : '일괄 입금확인'} description={`${formatWon(quote.expectedAmount)} 입금을 확인하시겠습니까?`} onClose={() => { if (!batchConfirming) setQuote(null) }} footer={<><button className="secondary-button" disabled={batchConfirming} onClick={() => setQuote(null)}>취소</button><button className="primary-button" disabled={!quoteIsValid || batchConfirming} onClick={() => void confirmBatch()}>{batchConfirming ? '입금 확인 중...' : '입금확인'}</button></>}>
         <div className="settlement-quote-summary settlement-quote-summary-simple"><span>선택 작업</span><strong>{quote.itemCount.toLocaleString('ko-KR')}건</strong><span>확인 금액</span><strong>{formatWon(quote.expectedAmount)}</strong><small>선택한 작업과 금액이 정확한지 확인해 주세요. 확인 후 다음 정산 단계로 넘어갑니다.</small></div>

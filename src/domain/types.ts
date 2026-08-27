@@ -83,6 +83,7 @@ export interface Order {
   programTransferState: ProgramTransferState
   programTransferDifference: number
   lastProgramTransferAt: string | null
+  settlementReversalPending: boolean
   lockVersion: number
   updatedAt: string
 }
@@ -318,6 +319,9 @@ export interface SettlementRow extends PaymentStep {
   registrantUsername: string
   registrantGroupName: string
   startDate: string
+  orderStatus: OrderStatus
+  orderLockVersion: number
+  settlementReversalPending: boolean
   registrantItemCount: number
   registrantTotalAmount: number
   registrantReadyCount: number
@@ -330,6 +334,17 @@ export interface SettlementRow extends PaymentStep {
   registrantSparkSAmount: number
   registrantSparkSPlusCount: number
   registrantSparkSPlusAmount: number
+}
+
+export interface PaymentReversalResult {
+  paymentStepId: string
+  orderId: string
+  orderStatus: OrderStatus
+  orderLockVersion: number
+  operationStatusPreserved: boolean
+  restoredToWaiting: boolean
+  settlementReversalPending: boolean
+  reversedAt: string
 }
 
 export interface SettlementPageResult {

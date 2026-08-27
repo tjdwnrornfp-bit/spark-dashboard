@@ -3251,3 +3251,152 @@ td small { margin-top: 4px; font-size: 10px; }
   .member-security-zone > button { width: 100%; }
   .reset-password-result { align-items: stretch; flex-direction: column; }
 }
+
+/* v10.1: identifiable admin settlement rows and auditable confirmation reversal */
+.settlement-company-table-compact {
+  min-width: 1010px;
+}
+
+.settlement-company-table-compact th:nth-child(1),
+.settlement-company-table-compact td:nth-child(1) { width: 48px; }
+.settlement-company-table-compact th:nth-child(2),
+.settlement-company-table-compact td:nth-child(2) { width: 110px; }
+.settlement-company-table-compact th:nth-child(3),
+.settlement-company-table-compact td:nth-child(3) { width: 190px; }
+.settlement-company-table-compact th:nth-child(4),
+.settlement-company-table-compact td:nth-child(4) { width: 125px; }
+.settlement-company-table-compact th:nth-child(5),
+.settlement-company-table-compact td:nth-child(5) { width: 140px; }
+.settlement-company-table-compact th:nth-child(6),
+.settlement-company-table-compact td:nth-child(6) { width: 155px; }
+.settlement-company-table-compact th:nth-child(7),
+.settlement-company-table-compact td:nth-child(7) { width: 160px; }
+.settlement-company-table-compact th:nth-child(8),
+.settlement-company-table-compact td:nth-child(8) { width: 120px; }
+
+.settlement-identity-cell strong {
+  display: block;
+  overflow: hidden;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.settlement-start-date {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.payment-confirmation-actions {
+  display: grid;
+  justify-items: center;
+  gap: 4px;
+}
+
+.payment-confirmed-label {
+  color: #198754;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.payment-reverse-button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #b0443c;
+  font-size: 9px;
+  font-weight: 750;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.payment-reverse-button:hover { color: #8f2f29; }
+.payment-reverse-button:disabled { opacity: .45; cursor: default; }
+
+.danger-button {
+  min-height: 38px;
+  padding: 0 16px;
+  border: 1px solid #b43f37;
+  border-radius: 6px;
+  background: #b43f37;
+  color: #fff;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.danger-button:hover { background: #9d352e; border-color: #9d352e; }
+.danger-button:disabled { opacity: .48; cursor: default; }
+
+.payment-reversal-modal { width: min(610px, 100%); }
+.payment-reversal-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.payment-reversal-summary > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 11px 12px;
+  border: 1px solid #e7eaf0;
+  border-radius: 7px;
+  background: #f8f9fb;
+}
+
+.payment-reversal-summary > .wide { grid-column: 1 / -1; }
+.payment-reversal-summary span { color: #7c8593; font-size: 10px; font-weight: 700; }
+.payment-reversal-summary strong { overflow-wrap: anywhere; color: #252d39; font-size: 13px; }
+
+.payment-reversal-warning,
+.payment-reversal-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border-radius: 7px;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.payment-reversal-warning { border: 1px solid #f1cf9b; background: #fff8ec; color: #865817; }
+.payment-reversal-note { border: 1px solid #cddbf4; background: #f2f6fd; color: #355a92; }
+.payment-reversal-warning svg,
+.payment-reversal-note svg { flex: 0 0 auto; margin-top: 1px; }
+
+.payment-reversal-reason {
+  display: grid;
+  gap: 7px;
+  margin-top: 14px;
+}
+
+.payment-reversal-reason > span { color: #535d6c; font-size: 12px; font-weight: 750; }
+.payment-reversal-reason b { color: #b43f37; font-size: 10px; }
+.payment-reversal-reason textarea {
+  width: 100%;
+  min-height: 96px;
+  padding: 10px 11px;
+  border: 1px solid #dfe3e9;
+  border-radius: 7px;
+  outline: 0;
+  resize: vertical;
+}
+.payment-reversal-reason textarea:focus { border-color: #7aa1ef; box-shadow: 0 0 0 3px rgba(37,99,235,.07); }
+.payment-reversal-reason small { justify-self: end; color: #89919d; font-size: 10px; }
+
+@media (max-width: 760px) {
+  .settlement-company-table-compact-wrap.desktop-table {
+    display: block;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .settlement-company-table-compact { min-width: 970px; }
+}
+
+@media (max-width: 720px) {
+  .payment-reversal-summary { grid-template-columns: 1fr; }
+  .payment-reversal-summary > .wide { grid-column: auto; }
+  .payment-reversal-modal > footer > button { flex: 1; }
+}
