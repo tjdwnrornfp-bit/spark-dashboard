@@ -10,6 +10,11 @@ import type {
   MemberDeletionResult,
   MemberPasswordResetResult,
   MemberReviewInput,
+  ManagedOrderFilterOption,
+  ManagedOrderFilters,
+  ManagedOrderRow,
+  ManagedOrdersPageResult,
+  ManagedOrdersSummary,
   Notice,
   NotificationItem,
   Order,
@@ -298,6 +303,41 @@ export function mapOperationsHealth(row: Record<string, unknown>): OperationsHea
     invalidPaymentStates: numberValue(row.invalid_payment_states),
     inactiveCronJobs: numberValue(row.inactive_cron_jobs),
     checkedAt: stringValue(row.checked_at),
+  }
+}
+
+function mapManagedOrder(row: Record<string, unknown>): ManagedOrderRow {
+  const settlementStatus = row.settlement_status === '정산완료'
+    ? '정산완료' as const
+    : row.settlement_status === '부분완료'
+      ? '부분완료' as const
+      : '정산대기' as const
+  return {
+    orderId: stringValue(row.order_id),
+    orderNumber: stringValue(row.order_number),
+    registrantId: stringValue(row.registrant_id),
+    registrantUsername: stringValue(row.registrant_username),
+    programType: (row.program_type as ManagedOrderRow['programType']) ?? 'spark',
+    storeName: stringValue(row.store_name),
+    keyword: stringValue(row.keyword),
+    mid: stringValue(row.mid),
+    placeUrl: stringValue(row.place_url),
+    dailyShots: numberValue(row.daily_shots),
+    operationDays: numberValue(row.operation_days),
+    pricePerShot: numberValue(row.price_per_shot),
+    supplyAmount: numberValue(row.supply_amount),
+    vatAmount: numberValue(row.vat_amount),
+    totalAmount: numberValue(row.total_amount),
+    startDate: stringValue(row.start_date),
+    endDate: stringValue(row.end_date),
+    orderStatus: row.order_status as ManagedOrderRow['orderStatus'],
+    settlementStatus,
+    settlementDetail: stringValue(row.settlement_detail),
+    confirmedSteps: numberValue(row.confirmed_steps),
+    totalSteps: numberValue(row.total_steps),
+    programTransferState: row.program_transfer_state === 'payment_pending' ? 'payment_pending' : 'none',
+    settlementReversalPending: Boolean(row.settlement_reversal_pending),
+    createdAt: stringValue(row.created_at),
   }
 }
 
@@ -1025,4 +1065,72 @@ export async function fetchSettlementBatchItemsV92(batchId: string): Promise<Set
       amount: numberValue(row.amount),
     }
   }) : []
+}
+
+export async function fetchManagedOrdersV102(
+  filters: ManagedOrderFilters,
+  page = 1,
+  pageSize = 50,
+): Promise<ManagedOrdersPageResult> {
+  const client = requiredClient()
+  const safePage = Math.max(1, Math.trunc(page))
+  const safePageSize = Math.min(500, Math.max(1, Math.trunc(pageSize)))
+  const { data, error } = await client.rpc('get_manager_managed_orders_v102', {
+    p_agency_id: filters.agencyId || null,
+    p_program_type: filters.programType === 'all' ? null : filters.programType,
+    p_order_status: filters.orderStatus === 'all' ? null : filters.orderStatus,
+    p_settlement_status: filters.settlementStatus === 'all' ? null : filters.settlementStatus,
+    p_query: filters.query.trim() || null,
+    p_start_date_from: filters.startDateFrom || null,
+    p_start_date_to: filters.startDateTo || null,
+    p_page: safePage,
+    p_page_size: safePageSize,
+  })
+  if (error) throw error
+  const resultRows = (data ?? []) as Array<Record<string, unknown>>
+  const totalCount = resultRows.length > 0 ? numberValue(resultRows[0].total_count) : 0
+  return {
+    rows: resultRows.map(mapManagedOrder),
+    page: safePage,
+    pageSize: safePageSize,
+    totalPages: Math.max(1, Math.ceil(totalCount / safePageSize)),
+    totalCount,
+  }
+}
+
+export async function fetchAllManagedOrdersV102(filters: ManagedOrderFilters): Promise<ManagedOrderRow[]> {
+  const rows: ManagedOrderRow[] = []
+  const pageSize = 500
+  let page = 1
+  while (true) {
+    const result = await fetchManagedOrdersV102(filters, page, pageSize)
+    rows.push(...result.rows)
+    if (rows.length >= result.totalCount || result.rows.length === 0) return rows
+    page += 1
+  }
+}
+
+export async function fetchManagedOrderFilterOptionsV102(): Promise<ManagedOrderFilterOption[]> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_manager_managed_order_filter_options_v102')
+  if (error) throw error
+  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
+    id: stringValue(row.agency_id),
+    username: stringValue(row.agency_username),
+  }))
+}
+
+export async function fetchManagedOrdersSummaryV102(): Promise<ManagedOrdersSummary> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_manager_managed_orders_summary_v102')
+  if (error) throw error
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null
+  return {
+    managedAgencyCount: numberValue(row?.managed_agency_count),
+    totalOrderCount: numberValue(row?.total_order_count),
+    runningOrderCount: numberValue(row?.running_order_count),
+    settlementWaitingCount: numberValue(row?.settlement_waiting_count),
+    totalAmount: numberValue(row?.total_amount),
+    settlementWaitingAmount: numberValue(row?.settlement_waiting_amount),
+  }
 }

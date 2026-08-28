@@ -7,6 +7,7 @@ import { ProgramIcon } from './ProgramIcon'
 const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType?: ProgramType }> = [
   { page: 'dashboard', label: '대시보드', icon: 'dashboard' },
   { page: 'notifications', label: '알림센터', icon: 'bell' },
+  { page: 'managedOrders', label: '관리 작업', icon: 'orders' },
   { page: 'sparkOrders', label: '스파크 접수', programType: 'spark' },
   { page: 'sparkPlusOrders', label: '스파크 + 접수', programType: 'spark_plus' },
   { page: 'sparkSOrders', label: '스파크S 접수', programType: 'spark_s' },
@@ -18,7 +19,7 @@ const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType
   { page: 'notices', label: '공지사항', icon: 'notice' },
 ]
 
-const MANAGER_PAGES = new Set<Page>(['dashboard', 'notifications', 'members', 'myinfo', 'notices'])
+const MANAGER_PAGES = new Set<Page>(['dashboard', 'notifications', 'managedOrders', 'members', 'myinfo', 'notices'])
 
 export function AppShell({ user, page, unreadCount, serverMode, children, onNavigate, onLogout }: {
   user: User

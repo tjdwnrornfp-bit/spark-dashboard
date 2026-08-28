@@ -5,6 +5,7 @@ import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgram
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
+import { ManagedOrdersPage } from './features/ManagedOrdersPage'
 import { MyInfoPage } from './features/MyInfoPage'
 import { NoticesPage } from './features/NoticesPage'
 import { NotificationsPage } from './features/NotificationsPage'
@@ -214,7 +215,7 @@ export default function App() {
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 5_000); return () => window.clearInterval(timer) }, [])
 
   useEffect(() => {
-    if (user?.isOperationsManager && !(['dashboard', 'notifications', 'members', 'myinfo', 'notices'] as Page[]).includes(page)) setPage('dashboard')
+    if (user?.isOperationsManager && !(['dashboard', 'notifications', 'managedOrders', 'members', 'myinfo', 'notices'] as Page[]).includes(page)) setPage('dashboard')
   }, [page, user?.isOperationsManager])
 
   useEffect(() => {
@@ -868,8 +869,9 @@ export default function App() {
 
   return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={setPage} onLogout={() => { setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
-    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} onNavigate={setPage} />}
+    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} onNavigate={setPage} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
+    {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}

@@ -1,9 +1,10 @@
-import type { ReactNode } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
 import { Icon } from '../components/Icon'
 import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
-import type { Notice, Order, Page, PaymentStep, User } from '../domain/types'
+import type { ManagedOrdersSummary, Notice, Order, Page, PaymentStep, User } from '../domain/types'
+import { fetchManagedOrdersSummaryV102 } from '../lib/backend'
 import { formatDate, formatDateTime, daysRemaining } from '../lib/date'
 import { formatWon } from '../lib/money'
 import { PROGRAMS, programOrders } from '../lib/program'
@@ -13,13 +14,14 @@ function adminRegistrantLabel(order: Order): string {
   return order.sponsorId ? `${group} 하위` : group
 }
 
-export function DashboardPage({ user, members, orders, paymentSteps, notices, now, onNavigate }: {
+export function DashboardPage({ user, members, orders, paymentSteps, notices, now, serverMode, onNavigate }: {
   user: User
   members: User[]
   orders: Order[]
   paymentSteps: PaymentStep[]
   notices: Notice[]
   now: Date
+  serverMode: boolean
   onNavigate: (page: Page) => void
 }) {
   const activeOrders = orders.filter((order) => !order.archivedAt)
@@ -59,15 +61,46 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
     }
   })
 
+  const [remoteManagerSummary, setRemoteManagerSummary] = useState<ManagedOrdersSummary | null>(null)
+  const [managerSummaryError, setManagerSummaryError] = useState('')
+  useEffect(() => {
+    if (!serverMode || !user.isOperationsManager) return
+    let active = true
+    void fetchManagedOrdersSummaryV102().then((summary) => {
+      if (!active) return
+      setRemoteManagerSummary(summary)
+      setManagerSummaryError('')
+    }).catch(() => {
+      if (active) setManagerSummaryError('작업 요약을 불러오지 못했습니다.')
+    })
+    return () => { active = false }
+  }, [serverMode, user.id, user.isOperationsManager])
+
   if (user.isOperationsManager) {
     const managed = members.filter((member) => member.managerId === user.id)
+    const managedIds = new Set(managed.map((member) => member.id))
+    const localManagedOrders = activeOrders.filter((order) => managedIds.has(order.createdBy))
+    const localWaitingOrders = localManagedOrders.filter((order) => {
+      const keys = new Set([order.dbId ?? order.id, order.id])
+      const steps = activePaymentSteps.filter((step) => keys.has(step.orderDbId))
+      return order.programTransferState === 'payment_pending' || order.settlementReversalPending || steps.length === 0 || steps.some((step) => !step.confirmedAt)
+    })
+    const localSummary: ManagedOrdersSummary = {
+      managedAgencyCount: managed.length,
+      totalOrderCount: localManagedOrders.length,
+      runningOrderCount: localManagedOrders.filter((order) => order.status === '구동중').length,
+      settlementWaitingCount: localWaitingOrders.length,
+      totalAmount: localManagedOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+      settlementWaitingAmount: localWaitingOrders.reduce((sum, order) => sum + order.totalAmount, 0),
+    }
+    const summary = serverMode ? remoteManagerSummary : localSummary
     const pendingMembers = managed.filter((member) => member.approvalStatus === 'pending')
     const approvedMembers = managed.filter((member) => member.approvalStatus === 'approved')
     const rejectedMembers = managed.filter((member) => member.approvalStatus === 'rejected')
     const recentManaged = [...managed].sort((a, b) => b.requestedAt.localeCompare(a.requestedAt)).slice(0, 8)
     return (
       <div className="page-stack dashboard-page-stack manager-dashboard-stack">
-        <PageHeader title="대시보드" subtitle={`${user.username} 중간관리자 계정의 회원 승인 현황입니다.`} />
+        <PageHeader title="대시보드" subtitle={`${user.username} 중간관리자 계정의 회원 및 작업 현황입니다.`} action={<button className="primary-button" onClick={() => onNavigate('managedOrders')}><Icon name="orders" />관리 작업 보기</button>} />
         {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
         <section className="manager-dashboard-hero">
           <div><span>관리 대행사</span><strong>{managed.length.toLocaleString('ko-KR')}<small>명</small></strong><p>내 관리 코드로 가입한 대행사만 표시됩니다.</p></div>
@@ -79,6 +112,13 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
           <MiniStat label="반려" value={`${rejectedMembers.length.toLocaleString('ko-KR')}명`} />
           <MiniStat label="정산 경로" value="관리자 직결" />
         </section>
+        <section className="mini-stat-grid payment-stat-grid agency-payment-grid manager-work-stats">
+          <MiniStat label="관리 대행사 수" value={summary ? `${summary.managedAgencyCount.toLocaleString('ko-KR')}명` : '불러오는 중'} />
+          <MiniStat label="전체 접수 건수" value={summary ? `${summary.totalOrderCount.toLocaleString('ko-KR')}건` : '불러오는 중'} />
+          <MiniStat label="현재 구동중" value={summary ? `${summary.runningOrderCount.toLocaleString('ko-KR')}건` : '불러오는 중'} />
+          <MiniStat label="정산대기" value={summary ? `${summary.settlementWaitingCount.toLocaleString('ko-KR')}건` : '불러오는 중'} />
+        </section>
+        {managerSummaryError && <p className="inline-message error">{managerSummaryError} 관리 작업 화면에서 다시 확인해 주세요.</p>}
         <section className="panel compact-panel manager-dashboard-members">
           <div className="panel-header"><div><h2>최근 가입 대행사</h2><p>승인과 프로그램별 단가는 회원관리에서 처리합니다.</p></div><button className="text-button" onClick={() => onNavigate('members')}>회원관리 <Icon name="chevron" /></button></div>
           {recentManaged.length === 0 ? <EmptyState text="관리 코드로 가입한 대행사가 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>아이디</th><th>가입일</th><th>상태</th></tr></thead><tbody>{recentManaged.map((member) => <tr key={member.id}><td><strong>{member.username}</strong></td><td>{formatDateTime(member.requestedAt)}</td><td><span>{member.approvalStatus === 'approved' ? '승인' : member.approvalStatus === 'rejected' ? '반려' : '승인대기'}</span></td></tr>)}</tbody></table></div>}

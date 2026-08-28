@@ -10,6 +10,7 @@ export const PROGRAMS: Array<{ type: ProgramType; label: string; shortLabel: str
 export const PROGRAM_PAGE_MAP: Record<Page, ProgramType | null> = {
   dashboard: null,
   notifications: null,
+  managedOrders: null,
   sparkOrders: 'spark',
   sparkPlusOrders: 'spark_plus',
   sparkSOrders: 'spark_s',

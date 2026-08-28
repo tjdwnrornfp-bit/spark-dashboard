@@ -4,7 +4,7 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
 export type ProgramType = 'spark' | 'spark_plus' | 'spark_s' | 'spark_s_plus'
 export type ProgramTransferState = 'none' | 'payment_pending'
-export type Page = 'dashboard' | 'notifications' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
+export type Page = 'dashboard' | 'notifications' | 'managedOrders' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
 
 export interface ProgramPriceMap {
   spark: number
@@ -118,6 +118,68 @@ export interface PaymentStep {
   canConfirm: boolean
   previousPendingCount: number
   createdAt: string
+}
+
+export type ManagedOrderSettlementStatus = '정산대기' | '부분완료' | '정산완료'
+
+export interface ManagedOrderFilters {
+  agencyId: string
+  programType: ProgramType | 'all'
+  orderStatus: OrderStatus | 'all'
+  settlementStatus: ManagedOrderSettlementStatus | 'all'
+  query: string
+  startDateFrom: string
+  startDateTo: string
+}
+
+export interface ManagedOrderRow {
+  orderId: string
+  orderNumber: string
+  registrantId: string
+  registrantUsername: string
+  programType: ProgramType
+  storeName: string
+  keyword: string
+  mid: string
+  placeUrl: string
+  dailyShots: number
+  operationDays: number
+  pricePerShot: number
+  supplyAmount: number
+  vatAmount: number
+  totalAmount: number
+  startDate: string
+  endDate: string
+  orderStatus: OrderStatus
+  settlementStatus: ManagedOrderSettlementStatus
+  settlementDetail: string
+  confirmedSteps: number
+  totalSteps: number
+  programTransferState: ProgramTransferState
+  settlementReversalPending: boolean
+  createdAt: string
+}
+
+export interface ManagedOrdersPageResult {
+  rows: ManagedOrderRow[]
+  page: number
+  pageSize: number
+  totalPages: number
+  totalCount: number
+}
+
+export interface ManagedOrderFilterOption {
+  id: string
+  username: string
+}
+
+export interface ManagedOrdersSummary {
+  managedAgencyCount: number
+  totalOrderCount: number
+  runningOrderCount: number
+  settlementWaitingCount: number
+  totalAmount: number
+  settlementWaitingAmount: number
 }
 
 export interface ProgramTransferPreview {
