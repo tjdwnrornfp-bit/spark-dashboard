@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, ManagedOrdersPreset, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentReversalResult, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SettlementRow, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, ManagedOrdersPreset, MemberDeletionCheck, MemberManagerBulkAssignmentResult, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentReversalResult, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SettlementRow, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -15,6 +15,8 @@ import { SettlementPage } from './features/SettlementPage'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import {
   archiveRemoteOrder,
+  assignRemoteMemberManager,
+  bulkAssignRemoteMemberManager,
   confirmRemotePaymentStep,
   confirmSettlementQuoteV92,
   createRemoteNotice,
@@ -696,6 +698,82 @@ export default function App() {
       : candidate))
   }
 
+  const handleMemberManagerAssignment = async (member: User, managerId: string | null, reason: string): Promise<User> => {
+    if (!user || user.role !== 'admin' || user.isOperationsManager || user.approvalStatus !== 'approved' || !user.active) {
+      throw new Error('승인된 활성 관리자만 관리 담당을 변경할 수 있습니다.')
+    }
+    if (reason.trim().length < 2) throw new Error('변경 사유를 2자 이상 입력해 주세요.')
+    if (!member.role || !['agency', 'distributor'].includes(member.role) || member.isOperationsManager || member.approvalStatus === 'rejected') {
+      throw new Error('대행사 또는 총판 계정만 관리 대상으로 배정할 수 있습니다.')
+    }
+    if (member.approvalStatus === 'approved' && !member.active) throw new Error('비활성 회원은 관리 대상으로 배정할 수 없습니다.')
+    if (member.id === user.id || member.id === managerId) throw new Error('자기 자신을 관리 담당으로 배정할 수 없습니다.')
+    if (member.managerId === managerId) throw new Error(managerId ? '이미 선택한 중간관리자가 담당하고 있습니다.' : '이미 관리자 직속 회원입니다.')
+
+    if (isSupabaseConfigured) {
+      const updated = await assignRemoteMemberManager({
+        memberId: member.id,
+        managerId,
+        reason,
+        expectedUpdatedAt: member.updatedAt,
+      })
+      const merged = { ...member, ...updated, phoneNumber: member.phoneNumber }
+      setRemoteMembers((current) => current.map((candidate) => candidate.id === merged.id ? merged : candidate))
+      return merged
+    }
+
+    const manager = managerId ? localMembers.find((candidate) => candidate.id === managerId) : null
+    if (managerId && (!manager || !manager.isOperationsManager || manager.approvalStatus !== 'approved' || !manager.active)) {
+      throw new Error('승인 완료된 활성 중간관리자만 선택할 수 있습니다.')
+    }
+    const updated: User = {
+      ...member,
+      managerId,
+      managerUsername: manager?.username ?? null,
+      updatedAt: new Date().toISOString(),
+    }
+    setLocalMembers((current) => current.map((candidate) => candidate.id === member.id ? updated : candidate))
+    return updated
+  }
+
+  const handleBulkMemberManagerAssignment = async (selectedMembers: User[], managerId: string | null, reason: string): Promise<MemberManagerBulkAssignmentResult> => {
+    if (!user || user.role !== 'admin' || user.isOperationsManager || user.approvalStatus !== 'approved' || !user.active) {
+      throw new Error('승인된 활성 관리자만 관리 담당을 변경할 수 있습니다.')
+    }
+    if (reason.trim().length < 2) throw new Error('변경 사유를 2자 이상 입력해 주세요.')
+    if (selectedMembers.length === 0) throw new Error('변경할 회원을 선택해 주세요.')
+
+    if (isSupabaseConfigured) {
+      const result = await bulkAssignRemoteMemberManager({ members: selectedMembers, managerId, reason })
+      const updatedById = new Map(result.items.flatMap((item) => item.member ? [[item.member.id, item.member] as const] : []))
+      setRemoteMembers((current) => current.map((candidate) => {
+        const updated = updatedById.get(candidate.id)
+        return updated ? { ...candidate, ...updated, phoneNumber: candidate.phoneNumber } : candidate
+      }))
+      await refreshRemote()
+      return result
+    }
+
+    const items: MemberManagerBulkAssignmentResult['items'] = []
+    for (const member of selectedMembers) {
+      try {
+        const updated = await handleMemberManagerAssignment(member, managerId, reason)
+        items.push({ memberId: member.id, username: member.username, status: 'succeeded', message: '관리 담당이 변경되었습니다.', member: updated })
+      } catch (caught) {
+        items.push({ memberId: member.id, username: member.username, status: 'failed', message: errorMessage(caught, '관리 담당을 변경하지 못했습니다.'), member: null })
+      }
+    }
+    const manager = managerId ? localMembers.find((candidate) => candidate.id === managerId) : null
+    return {
+      selectedCount: selectedMembers.length,
+      succeededCount: items.filter((item) => item.status === 'succeeded').length,
+      failedCount: items.filter((item) => item.status === 'failed').length,
+      managerId,
+      managerUsername: manager?.username ?? null,
+      items,
+    }
+  }
+
   const handleMemberReview = async (params: MemberReviewInput) => {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (isSupabaseConfigured) {
@@ -884,7 +962,7 @@ export default function App() {
     {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} initialFilters={managedOrderPreset} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
-    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
+    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
     {page === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}

@@ -359,6 +359,25 @@ export interface MemberDeletionResult {
   deletedAt: string
 }
 
+export type MemberManagerAssignmentItemStatus = 'succeeded' | 'failed'
+
+export interface MemberManagerAssignmentResultItem {
+  memberId: string
+  username: string
+  status: MemberManagerAssignmentItemStatus
+  message: string
+  member: User | null
+}
+
+export interface MemberManagerBulkAssignmentResult {
+  selectedCount: number
+  succeededCount: number
+  failedCount: number
+  managerId: string | null
+  managerUsername: string | null
+  items: MemberManagerAssignmentResultItem[]
+}
+
 export interface MemberPasswordResetResult {
   ok: boolean
   memberId: string

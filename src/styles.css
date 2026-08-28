@@ -530,6 +530,52 @@ td a { display: block; max-width: 210px; overflow: hidden; color: #4b78c8; text-
   .managed-orders-search { grid-column: auto; }
 }
 
+/* v10.4: admin assignment and reassignment of existing members */
+.members-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding-right: 14px; border-bottom: 1px solid #e8eaef; }
+.members-toolbar .member-tabs { flex: 1; border-bottom: 0; }
+.member-bulk-manager-button { flex: none; min-height: 36px; }
+.member-row-actions { display: flex; align-items: center; gap: 7px; }
+.mobile-member-select { display: flex; align-items: center; gap: 7px; margin-bottom: 10px; color: #737b88; font-size: 11px; }
+.mobile-member-actions { display: flex !important; align-items: center !important; justify-content: flex-start !important; gap: 8px; }
+.member-manager-assignment-dialog { display: grid; gap: 16px; }
+.member-manager-assignment-dialog > label { display: grid; gap: 7px; }
+.member-manager-assignment-dialog > label > span { color: #5e6571; font-size: 12px; font-weight: 650; }
+.member-manager-assignment-dialog > label em { margin-left: 4px; color: #d13f35; font-size: 10px; font-style: normal; }
+.member-manager-assignment-dialog select,
+.member-manager-assignment-dialog textarea { width: 100%; border: 1px solid #dfe2e8; border-radius: 5px; outline: 0; background: #fff; color: #2d323a; font: inherit; }
+.member-manager-assignment-dialog select { height: 40px; padding: 0 11px; }
+.member-manager-assignment-dialog textarea { min-height: 92px; padding: 11px; resize: vertical; }
+.member-manager-assignment-dialog select:focus,
+.member-manager-assignment-dialog textarea:focus { border-color: #7aa1ef; box-shadow: 0 0 0 3px rgba(37,96,235,.07); }
+.manager-assignment-target { display: grid; gap: 5px; padding: 15px 16px; border: 1px solid #dfe5ef; border-radius: 6px; background: #f7f9fc; }
+.manager-assignment-target span { color: #7b8492; font-size: 11px; }
+.manager-assignment-target strong { color: #222a36; font-size: 16px; }
+.manager-assignment-target small { color: #727c8b; font-size: 11px; line-height: 1.55; }
+.manager-assignment-warning { padding: 14px 15px; border: 1px solid #efce8d; border-radius: 6px; background: #fff9eb; }
+.manager-assignment-warning strong { display: block; color: #8b5a00; font-size: 12px; }
+.manager-assignment-warning p { margin: 6px 0 0; color: #805f22; font-size: 11px; line-height: 1.55; }
+.manager-assignment-note { margin: 0; color: #7f8793; font-size: 11px; line-height: 1.55; }
+.manager-assignment-result-summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px; border-radius: 6px; }
+.manager-assignment-result-summary.success { border: 1px solid #bfe4d3; background: #f1fbf6; color: #247955; }
+.manager-assignment-result-summary.partial { border: 1px solid #efce8d; background: #fff9eb; color: #8b5a00; }
+.manager-assignment-result-summary strong { font-size: 15px; }
+.manager-assignment-result-summary span { font-size: 11px; }
+.manager-assignment-result-list { display: grid; max-height: 320px; overflow: auto; border: 1px solid #e1e5ea; border-radius: 6px; }
+.manager-assignment-result-list > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 11px 13px; border-bottom: 1px solid #edf0f3; }
+.manager-assignment-result-list > div:last-child { border-bottom: 0; }
+.manager-assignment-result-list strong { color: #303743; font-size: 12px; }
+.manager-assignment-result-list span { font-size: 10px; font-weight: 750; }
+.manager-assignment-result-list .succeeded span { color: #168253; }
+.manager-assignment-result-list .failed span { color: #c23a32; }
+.manager-assignment-result-list small { grid-column: 1 / -1; color: #7a828e; font-size: 10px; line-height: 1.45; }
+
+@media (max-width: 760px) {
+  .members-toolbar { align-items: stretch; flex-direction: column; padding: 0 12px 12px; }
+  .members-toolbar .member-tabs { width: 100%; padding-left: 0; padding-right: 0; }
+  .member-bulk-manager-button { width: 100%; justify-content: center; }
+  .manager-assignment-result-summary { align-items: flex-start; flex-direction: column; }
+}
+
 /* v4: large-monitor density and legibility */
 :root { --sidebar-width: 196px; }
 body { font-size: 15px; }

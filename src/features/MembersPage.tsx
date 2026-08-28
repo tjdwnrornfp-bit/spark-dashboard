@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { ApprovalBadge } from '../components/StatusBadge'
-import type { MemberDeletionCheck, MemberReviewInput, MemberRole, ProgramPriceMap, User } from '../domain/types'
+import type { MemberDeletionCheck, MemberManagerBulkAssignmentResult, MemberReviewInput, MemberRole, ProgramPriceMap, User } from '../domain/types'
 import { formatDateTime } from '../lib/date'
 import { formatWon } from '../lib/money'
 import { getProgramPriceMap } from '../lib/program'
@@ -27,10 +27,15 @@ function memberTypeLabel(member: User): string {
 }
 
 function managementLabel(member: User): string {
-  if (member.isOperationsManager) return '관리자 지정 중간관리자'
-  if (member.managerId) return `${member.managerUsername || '중간관리자'} 관리 · 관리자 직결`
-  if (member.sponsorId) return `${member.sponsorUsername || '상위회원'} 추천`
+  if (member.isOperationsManager) return '배정 대상 아님'
+  if (member.managerId) return member.managerUsername || '지정된 중간관리자'
   return '관리자 직속'
+}
+
+function canAssignManager(member: User): boolean {
+  if (member.role !== 'agency' && member.role !== 'distributor') return false
+  if (member.isOperationsManager || member.approvalStatus === 'rejected') return false
+  return member.approvalStatus !== 'approved' || member.active
 }
 
 function generateTemporaryPassword(): string {
@@ -40,10 +45,12 @@ function generateTemporaryPassword(): string {
   return `Sp!${Array.from(random, (value) => alphabet[value % alphabet.length]).join('')}`
 }
 
-export function MembersPage({ user, members, onReview, onCheckDeletion, onDeleteMember, onResetPassword }: {
+export function MembersPage({ user, members, onReview, onAssignManager, onBulkAssignManager, onCheckDeletion, onDeleteMember, onResetPassword }: {
   user: User
   members: User[]
   onReview: (params: MemberReviewInput) => Promise<void>
+  onAssignManager: (member: User, managerId: string | null, reason: string) => Promise<User>
+  onBulkAssignManager: (members: User[], managerId: string | null, reason: string) => Promise<MemberManagerBulkAssignmentResult>
   onCheckDeletion: (member: User) => Promise<MemberDeletionCheck>
   onDeleteMember: (member: User) => Promise<void>
   onResetPassword: (member: User, newPassword: string) => Promise<void>
@@ -68,6 +75,15 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
   const [passwordResetComplete, setPasswordResetComplete] = useState(false)
   const [passwordResetError, setPasswordResetError] = useState('')
   const [passwordCopied, setPasswordCopied] = useState(false)
+  const [checkedMemberIds, setCheckedMemberIds] = useState<Set<string>>(new Set())
+  const [assignmentOpen, setAssignmentOpen] = useState(false)
+  const [assignmentMode, setAssignmentMode] = useState<'single' | 'bulk'>('single')
+  const [assignmentMemberIds, setAssignmentMemberIds] = useState<string[]>([])
+  const [assignmentTarget, setAssignmentTarget] = useState('')
+  const [assignmentReason, setAssignmentReason] = useState('')
+  const [assignmentSaving, setAssignmentSaving] = useState(false)
+  const [assignmentError, setAssignmentError] = useState('')
+  const [assignmentResult, setAssignmentResult] = useState<MemberManagerBulkAssignmentResult | null>(null)
   const isAdmin = user.role === 'admin'
   const isManager = user.isOperationsManager
   const users = useMemo(
@@ -80,6 +96,15 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
     [isAdmin, isManager, members, user.id],
   )
   const visible = useMemo(() => users.filter((member) => filter === 'all' || member.approvalStatus === filter), [filter, users])
+  const managerCandidates = useMemo(
+    () => members
+      .filter((member) => member.isOperationsManager && member.approvalStatus === 'approved' && member.active)
+      .sort((a, b) => a.username.localeCompare(b.username, 'ko-KR')),
+    [members],
+  )
+  const checkedMembers = useMemo(() => members.filter((member) => checkedMemberIds.has(member.id) && canAssignManager(member)), [checkedMemberIds, members])
+  const visibleAssignable = useMemo(() => visible.filter(canAssignManager), [visible])
+  const allVisibleAssignableChecked = visibleAssignable.length > 0 && visibleAssignable.every((member) => checkedMemberIds.has(member.id))
   const selected = members.find((member) => member.id === selectedId) ?? null
   const sponsorPending = Boolean(isAdmin && selected?.approvalStatus === 'pending' && selected.sponsorId)
   const adminManagedMember = Boolean(isAdmin && selected?.managerId)
@@ -246,6 +271,101 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
     }
   }
 
+  const resetAssignmentDialog = () => {
+    setAssignmentTarget('')
+    setAssignmentReason('')
+    setAssignmentError('')
+    setAssignmentResult(null)
+  }
+
+  const openSingleAssignment = (member: User) => {
+    if (!isAdmin || !canAssignManager(member)) return
+    setAssignmentMode('single')
+    setAssignmentMemberIds([member.id])
+    resetAssignmentDialog()
+    setAssignmentOpen(true)
+  }
+
+  const openBulkAssignment = () => {
+    if (!isAdmin || checkedMembers.length === 0) return
+    setAssignmentMode('bulk')
+    setAssignmentMemberIds(checkedMembers.map((member) => member.id))
+    resetAssignmentDialog()
+    setAssignmentOpen(true)
+  }
+
+  const closeAssignment = () => {
+    if (assignmentSaving) return
+    setAssignmentOpen(false)
+    setAssignmentMemberIds([])
+    resetAssignmentDialog()
+  }
+
+  const toggleMemberChecked = (member: User) => {
+    if (!canAssignManager(member)) return
+    setCheckedMemberIds((current) => {
+      const next = new Set(current)
+      if (next.has(member.id)) next.delete(member.id)
+      else next.add(member.id)
+      return next
+    })
+  }
+
+  const toggleVisibleAssignable = () => {
+    setCheckedMemberIds((current) => {
+      const next = new Set(current)
+      visibleAssignable.forEach((member) => {
+        if (allVisibleAssignableChecked) next.delete(member.id)
+        else next.add(member.id)
+      })
+      return next
+    })
+  }
+
+  const submitAssignment = async () => {
+    if (assignmentSaving || assignmentResult) return
+    const targets = assignmentMemberIds
+      .map((memberId) => members.find((member) => member.id === memberId))
+      .filter((member): member is User => Boolean(member && canAssignManager(member)))
+    if (targets.length === 0) {
+      setAssignmentError('변경할 수 있는 회원이 없습니다. 목록을 새로고침해 주세요.')
+      return
+    }
+    if (!assignmentTarget) {
+      setAssignmentError('변경할 중간관리자 또는 관리자 직속 해제를 선택해 주세요.')
+      return
+    }
+    if (assignmentReason.trim().length < 2) {
+      setAssignmentError('변경 사유를 2자 이상 입력해 주세요.')
+      return
+    }
+    const managerId = assignmentTarget === 'direct' ? null : assignmentTarget
+    setAssignmentSaving(true)
+    setAssignmentError('')
+    try {
+      const result = assignmentMode === 'single'
+        ? await onAssignManager(targets[0], managerId, assignmentReason).then((updated): MemberManagerBulkAssignmentResult => ({
+          selectedCount: 1,
+          succeededCount: 1,
+          failedCount: 0,
+          managerId,
+          managerUsername: updated.managerUsername,
+          items: [{ memberId: updated.id, username: updated.username, status: 'succeeded', message: '관리 담당이 변경되었습니다.', member: updated }],
+        }))
+        : await onBulkAssignManager(targets, managerId, assignmentReason)
+      setAssignmentResult(result)
+      setCheckedMemberIds((current) => {
+        const next = new Set(current)
+        result.items.filter((item) => item.status === 'succeeded').forEach((item) => next.delete(item.memberId))
+        return next
+      })
+    } catch (caught) {
+      setAssignmentError(getErrorMessage(caught))
+    } finally {
+      setAssignmentSaving(false)
+    }
+  }
+
   const counts = {
     all: users.length,
     pending: users.filter((member) => member.approvalStatus === 'pending').length,
@@ -254,6 +374,10 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
   }
 
   const minFor = (program: keyof ProgramPriceMap) => isAdmin || isManager ? 1 : parentPrices[program] + 1
+  const assignmentMembers = assignmentMemberIds
+    .map((memberId) => members.find((member) => member.id === memberId))
+    .filter((member): member is User => Boolean(member))
+  const assignmentHasSponsor = assignmentMembers.some((member) => member.sponsorId)
 
   return (
     <div className="page-stack members-page-stack">
@@ -262,7 +386,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
         subtitle={isAdmin
           ? '전체 회원의 관리 관계, 유형과 프로그램별 단가를 관리합니다.'
           : isManager
-            ? '내 관리 코드로 가입한 대행사를 승인하고 단가를 지정합니다. 정산은 관리자와 직접 연결됩니다.'
+            ? '내 관리 코드로 가입했거나 관리자가 배정한 대행사를 확인합니다. 추천·정산 관계는 별도로 유지됩니다.'
             : '내 추천 코드로 가입한 하위 대행사를 승인하고 프로그램별 단가를 관리합니다.'}
       />
 
@@ -271,7 +395,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
           <div><span>{isManager ? '내 관리 코드' : '내 추천 코드'}</span><strong>{user.referralCode || user.username}</strong><small>회원가입 시 내 아이디 또는 이 코드를 입력할 수 있습니다.</small></div>
           {isManager ? (
             <>
-              <div><span>관리 권한</span><strong>대행사 승인 · 단가 지정</strong><small>내 코드로 가입한 대행사만 관리할 수 있습니다.</small></div>
+              <div><span>관리 권한</span><strong>대행사 승인 · 단가 지정</strong><small>내 코드 가입 회원과 관리자가 배정한 대행사를 확인할 수 있습니다.</small></div>
               <div><span>정산 연결</span><strong>관리자 직결</strong><small>관리 대행사의 입금 계좌와 정산은 중간관리자를 거치지 않습니다.</small></div>
             </>
           ) : (
@@ -284,11 +408,14 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
       )}
 
       <section className="panel members-panel fill-panel">
-        <div className="filter-tabs member-tabs">
-          {([['all', '전체'], ['pending', '승인대기'], ['approved', '승인'], ['rejected', '반려']] as const).map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}<span>{counts[value]}</span></button>)}
+        <div className="members-toolbar">
+          <div className="filter-tabs member-tabs">
+            {([['all', '전체'], ['pending', '승인대기'], ['approved', '승인'], ['rejected', '반려']] as const).map(([value, label]) => <button key={value} className={filter === value ? 'active' : ''} onClick={() => setFilter(value)}>{label}<span>{counts[value]}</span></button>)}
+          </div>
+          {isAdmin && <button className="primary-button member-bulk-manager-button" disabled={checkedMembers.length === 0} onClick={openBulkAssignment}><Icon name="users" />중간관리자 배정 ({checkedMembers.length})</button>}
         </div>
-        <div className="desktop-table"><table className="members-table"><thead><tr><th>아이디</th>{isAdmin && <th>전화번호</th>}{isAdmin && <th>그룹명</th>}{isAdmin && <th>관리 관계</th>}<th>회원유형</th><th>스파크</th><th>스파크 +</th><th>스파크S</th><th>스파크S+</th><th>승인상태</th><th>가입 신청일</th><th>관리</th></tr></thead><tbody>{visible.map((member) => { const memberPrices = getProgramPriceMap(member); return <tr key={member.id} className={selectedId === member.id ? 'selected-row' : ''}><td><strong>{member.username}</strong><small className="table-subtext">코드 {member.referralCode || '-'}</small></td>{isAdmin && <td><strong className="member-phone-cell">{formatPhoneNumber(member.phoneNumber)}</strong></td>}{isAdmin && <td>{member.groupName || '-'}</td>}{isAdmin && <td>{managementLabel(member)}</td>}<td>{memberTypeLabel(member)}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s_plus > 0 ? formatWon(memberPrices.spark_s_plus) : '-'}</td><td><ApprovalBadge status={member.approvalStatus} /></td><td>{formatDateTime(member.requestedAt)}</td><td><button className="dark-small-button" onClick={() => open(member)}>{member.approvalStatus === 'approved' ? '수정' : '검토'}</button></td></tr>})}</tbody></table></div>
-        <div className="mobile-member-list">{visible.map((member) => { const memberPrices = getProgramPriceMap(member); return <article key={member.id}><div><strong>{member.username}</strong><ApprovalBadge status={member.approvalStatus} /></div><p>{isAdmin ? `${managementLabel(member)} · ` : ''}{memberTypeLabel(member)}</p>{!member.isOperationsManager && <p>스파크 {memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'} · 스파크+ {memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'} · 스파크S {memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'} · 스파크S+ {memberPrices.spark_s_plus > 0 ? formatWon(memberPrices.spark_s_plus) : '-'}</p>}{isAdmin && <p>전화번호 {formatPhoneNumber(member.phoneNumber)}</p>}{isAdmin && <p>그룹 {member.groupName || '-'}</p>}<button className="secondary-button small" onClick={() => open(member)}>회원 검토</button></article>})}</div>
+        <div className="desktop-table"><table className="members-table"><thead><tr>{isAdmin && <th className="checkbox-cell"><input type="checkbox" aria-label="현재 목록의 배정 가능 회원 전체 선택" checked={allVisibleAssignableChecked} disabled={visibleAssignable.length === 0} onChange={toggleVisibleAssignable} /></th>}<th>아이디</th>{isAdmin && <th>전화번호</th>}{isAdmin && <th>그룹명</th>}{isAdmin && <th>관리 담당</th>}<th>회원유형</th><th>스파크</th><th>스파크 +</th><th>스파크S</th><th>스파크S+</th><th>승인상태</th><th>가입 신청일</th><th>관리</th></tr></thead><tbody>{visible.map((member) => { const memberPrices = getProgramPriceMap(member); const assignable = canAssignManager(member); return <tr key={member.id} className={selectedId === member.id || checkedMemberIds.has(member.id) ? 'selected-row' : ''}>{isAdmin && <td className="checkbox-cell"><input type="checkbox" aria-label={`${member.username} 배정 선택`} checked={checkedMemberIds.has(member.id)} disabled={!assignable} onChange={() => toggleMemberChecked(member)} /></td>}<td><strong>{member.username}</strong><small className="table-subtext">코드 {member.referralCode || '-'}</small></td>{isAdmin && <td><strong className="member-phone-cell">{formatPhoneNumber(member.phoneNumber)}</strong></td>}{isAdmin && <td>{member.groupName || '-'}</td>}{isAdmin && <td><strong>{managementLabel(member)}</strong>{member.sponsorId && <small className="table-subtext">추천/정산: {member.sponsorUsername || '기존 상위회원'}</small>}</td>}<td>{memberTypeLabel(member)}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'}</td><td>{member.isOperationsManager ? '-' : memberPrices.spark_s_plus > 0 ? formatWon(memberPrices.spark_s_plus) : '-'}</td><td><ApprovalBadge status={member.approvalStatus} /></td><td>{formatDateTime(member.requestedAt)}</td><td><div className="member-row-actions"><button className="dark-small-button" onClick={() => open(member)}>{member.approvalStatus === 'approved' ? '수정' : '검토'}</button>{isAdmin && assignable && <button className="secondary-button small" onClick={() => openSingleAssignment(member)}>{member.managerId ? '관리 담당 변경' : '중간관리자 배정'}</button>}</div></td></tr>})}</tbody></table></div>
+        <div className="mobile-member-list">{visible.map((member) => { const memberPrices = getProgramPriceMap(member); const assignable = canAssignManager(member); return <article key={member.id}>{isAdmin && assignable && <label className="mobile-member-select"><input type="checkbox" checked={checkedMemberIds.has(member.id)} onChange={() => toggleMemberChecked(member)} /><span>일괄 배정 선택</span></label>}<div><strong>{member.username}</strong><ApprovalBadge status={member.approvalStatus} /></div><p>{isAdmin ? `관리 담당 ${managementLabel(member)} · ` : ''}{memberTypeLabel(member)}</p>{isAdmin && member.sponsorId && <p>추천/정산 {member.sponsorUsername || '기존 상위회원'} 유지</p>}{!member.isOperationsManager && <p>스파크 {memberPrices.spark > 0 ? formatWon(memberPrices.spark) : '-'} · 스파크+ {memberPrices.spark_plus > 0 ? formatWon(memberPrices.spark_plus) : '-'} · 스파크S {memberPrices.spark_s > 0 ? formatWon(memberPrices.spark_s) : '-'} · 스파크S+ {memberPrices.spark_s_plus > 0 ? formatWon(memberPrices.spark_s_plus) : '-'}</p>}{isAdmin && <p>전화번호 {formatPhoneNumber(member.phoneNumber)}</p>}{isAdmin && <p>그룹 {member.groupName || '-'}</p>}<div className="mobile-member-actions"><button className="secondary-button small" onClick={() => open(member)}>회원 검토</button>{isAdmin && assignable && <button className="secondary-button small" onClick={() => openSingleAssignment(member)}>{member.managerId ? '관리 담당 변경' : '중간관리자 배정'}</button>}</div></article>})}</div>
 
         {visible.length === 0 && <div className="empty-state fill-empty-state">조건에 맞는 회원이 없습니다.</div>}
 
@@ -308,7 +435,7 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
             {isAdmin && <div className="member-static-info"><span>연결 상태</span><strong>{managementLabel(selected)}</strong></div>}
           </div>
           {sponsorPending && <p className="inline-message">이 회원은 직접 추천 회원인 <strong>{selected.sponsorUsername}</strong> 계정에서 승인합니다.</p>}
-          {adminManagedMember && <p className="inline-message">관리 담당은 <strong>{selected.managerUsername || '지정된 중간관리자'}</strong>이며, 입금 계좌와 정산은 관리자에게 직접 연결됩니다. 관리자는 필요 시 직접 승인·수정할 수 있습니다.</p>}
+          {adminManagedMember && <p className="inline-message">관리 담당은 <strong>{selected.managerUsername || '지정된 중간관리자'}</strong>입니다. {selected.sponsorId ? `추천·정산 관계는 ${selected.sponsorUsername || '기존 상위회원'} 계정으로 그대로 유지됩니다.` : '추천·정산 관계는 관리자 직속입니다.'}</p>}
           {isManager && <p className="inline-message">승인한 대행사의 입금 계좌와 정산은 관리자에게 직접 연결됩니다.</p>}
           {!isAdmin && !isManager && (!user.bank || !user.accountNumber || !user.accountHolder) && <p className="inline-message error">내 정보에서 입금 계좌를 먼저 등록해야 회원을 승인할 수 있습니다.</p>}
           {isAdmin && <div className="member-security-zone"><div><span>로그인 보안</span><strong>회원 비밀번호 재설정</strong><small>현재 비밀번호는 확인할 수 없습니다. 새 비밀번호를 직접 입력하거나 임시 비밀번호를 생성해 전달하세요.</small></div><button className="secondary-button" disabled={saving || passwordResetting} onClick={openPasswordReset}><Icon name="lock" />비밀번호 재설정</button></div>}
@@ -317,6 +444,34 @@ export function MembersPage({ user, members, onReview, onCheckDeletion, onDelete
           <div className="member-editor-actions"><button className="secondary-button danger-outline" disabled={saving || sponsorPending} onClick={() => void save('rejected')}>반려</button><button className="primary-button" disabled={saving || sponsorPending || (!isAdmin && !isManager && (!user.bank || !user.accountNumber || !user.accountHolder))} onClick={() => void save('approved')}>{saving ? '저장 중...' : selected.approvalStatus === 'approved' ? '수정 저장' : '승인'}</button></div>
         </div>}
       </section>
+
+      {assignmentOpen && <Modal
+        title={assignmentMode === 'bulk' ? '중간관리자 일괄 배정' : '관리 담당 변경'}
+        description={assignmentMode === 'bulk' ? `${assignmentMembers.length}개 회원의 관리 담당을 한 번에 변경합니다.` : `${assignmentMembers[0]?.username || '선택 회원'}의 관리 담당을 변경합니다.`}
+        onClose={closeAssignment}
+        footer={assignmentResult
+          ? <button className="primary-button" onClick={closeAssignment}>확인</button>
+          : <><button className="secondary-button" disabled={assignmentSaving} onClick={closeAssignment}>취소</button><button className="primary-button" disabled={assignmentSaving} onClick={() => void submitAssignment()}>{assignmentSaving ? '변경 중...' : assignmentMode === 'bulk' ? `${assignmentMembers.length}명 적용` : '변경 적용'}</button></>}
+      >
+        <div className="member-manager-assignment-dialog">
+          {!assignmentResult ? <>
+            <div className="manager-assignment-target">
+              <span>대상 회원</span>
+              <strong>{assignmentMode === 'single' ? assignmentMembers[0]?.username : `${assignmentMembers.length}명 선택`}</strong>
+              <small>{assignmentMode === 'single' ? `현재 관리 담당: ${assignmentMembers[0] ? managementLabel(assignmentMembers[0]) : '-'}` : assignmentMembers.slice(0, 5).map((member) => member.username).join(', ') + (assignmentMembers.length > 5 ? ` 외 ${assignmentMembers.length - 5}명` : '')}</small>
+            </div>
+            <label><span>변경할 관리 담당</span><select value={assignmentTarget} onChange={(event) => { setAssignmentTarget(event.target.value); setAssignmentError('') }}><option value="">선택해 주세요</option><option value="direct">관리자 직속으로 해제</option>{managerCandidates.map((manager) => <option key={manager.id} value={manager.id}>{manager.username}</option>)}</select></label>
+            {managerCandidates.length === 0 && <p className="manager-assignment-note">현재 승인 완료된 활성 중간관리자가 없습니다. 관리자 직속 해제만 사용할 수 있습니다.</p>}
+            {assignmentHasSponsor && <div className="manager-assignment-warning"><strong>기존 추천/정산 관계가 있는 회원이 포함되어 있습니다.</strong><p>중간관리자 배정은 관리 권한만 변경하며 기존 추천·정산 관계는 변경하지 않습니다.</p></div>}
+            <label><span>변경 사유 <em>필수</em></span><textarea value={assignmentReason} maxLength={300} rows={4} placeholder="예: 기존 회원 관리 이관" onChange={(event) => { setAssignmentReason(event.target.value); setAssignmentError('') }} /></label>
+            <p className="manager-assignment-note">대행사·총판만 배정할 수 있으며, admin·중간관리자 계정과 비활성·반려 계정은 제외됩니다. 변경 내용은 회원별 감사기록에 남습니다.</p>
+          </> : <>
+            <div className={`manager-assignment-result-summary ${assignmentResult.failedCount > 0 ? 'partial' : 'success'}`}><strong>{assignmentResult.succeededCount}명 변경 완료</strong><span>{assignmentResult.failedCount > 0 ? `${assignmentResult.failedCount}명 실패` : '모든 회원의 관리 담당이 변경되었습니다.'}</span></div>
+            <div className="manager-assignment-result-list">{assignmentResult.items.map((item) => <div key={item.memberId || item.username} className={item.status}><strong>{item.username || item.memberId || '알 수 없는 회원'}</strong><span>{item.status === 'succeeded' ? '완료' : '실패'}</span><small>{item.message}</small></div>)}</div>
+          </>}
+          {assignmentError && <p className="inline-message error">{assignmentError}</p>}
+        </div>
+      </Modal>}
 
       {deleteOpen && selected && <Modal
         title="계정 영구 삭제"

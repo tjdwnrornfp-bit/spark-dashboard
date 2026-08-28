@@ -6,6 +6,7 @@ import type {
   BulkProgramTransferResult,
   CompanyOverviewSort,
   AuditLog,
+  MemberManagerBulkAssignmentResult,
   MemberDeletionCheck,
   MemberDeletionResult,
   MemberPasswordResetResult,
@@ -657,6 +658,62 @@ export async function reviewRemoteMember(params: Omit<MemberReviewInput, 'member
   })
   if (error) throw error
   return mapProfile(data as Record<string, unknown>)
+}
+
+export async function assignRemoteMemberManager(params: {
+  memberId: string
+  managerId: string | null
+  reason: string
+  expectedUpdatedAt: string
+}): Promise<User> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('admin_assign_member_manager_v104', {
+    p_member_id: params.memberId,
+    p_manager_id: params.managerId,
+    p_reason: params.reason.trim(),
+    p_expected_updated_at: params.expectedUpdatedAt,
+  })
+  if (error) throw error
+  return mapProfile(data as Record<string, unknown>)
+}
+
+export async function bulkAssignRemoteMemberManager(params: {
+  members: User[]
+  managerId: string | null
+  reason: string
+}): Promise<MemberManagerBulkAssignmentResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('admin_bulk_assign_member_manager_v104', {
+    p_items: params.members.map((member) => ({
+      member_id: member.id,
+      expected_updated_at: member.updatedAt,
+    })),
+    p_manager_id: params.managerId,
+    p_reason: params.reason.trim(),
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  const rawItems = Array.isArray(result.items) ? result.items : []
+  return {
+    selectedCount: numberValue(result.selectedCount),
+    succeededCount: numberValue(result.succeededCount),
+    failedCount: numberValue(result.failedCount),
+    managerId: nullableString(result.managerId),
+    managerUsername: nullableString(result.managerUsername),
+    items: rawItems.map((value) => {
+      const item = recordValue(value)
+      const profile = item.profile && typeof item.profile === 'object' && !Array.isArray(item.profile)
+        ? mapProfile(item.profile as Record<string, unknown>)
+        : null
+      return {
+        memberId: stringValue(item.memberId),
+        username: stringValue(item.username),
+        status: item.status === 'succeeded' ? 'succeeded' as const : 'failed' as const,
+        message: stringValue(item.message),
+        member: profile,
+      }
+    }),
+  }
 }
 
 export async function saveRemoteAccount(account: AccountDraft): Promise<User> {

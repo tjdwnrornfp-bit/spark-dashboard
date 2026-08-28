@@ -209,7 +209,7 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
 
   return (
     <div className="page-stack managed-orders-page-stack">
-      <PageHeader title="관리 작업" subtitle="내 관리 코드로 가입한 대행사의 작업 및 정산 상태를 읽기 전용으로 확인합니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={selected.size === 0 || exporting} onClick={exportSelected}><Icon name="download" />선택 엑셀 ({selected.size.toLocaleString('ko-KR')})</button><button className="primary-button" disabled={!result?.totalCount || exporting} onClick={() => void exportAllFiltered()}><Icon name="download" />{exporting ? '전체 조회 중' : '필터 전체 엑셀'}</button></div>} />
+      <PageHeader title="관리 작업" subtitle="현재 내 관리 담당으로 배정된 대행사의 과거·현재 작업과 정산 상태를 읽기 전용으로 확인합니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={selected.size === 0 || exporting} onClick={exportSelected}><Icon name="download" />선택 엑셀 ({selected.size.toLocaleString('ko-KR')})</button><button className="primary-button" disabled={!result?.totalCount || exporting} onClick={() => void exportAllFiltered()}><Icon name="download" />{exporting ? '전체 조회 중' : '필터 전체 엑셀'}</button></div>} />
       <section className="panel compact-panel managed-orders-filter-panel">
         <div className="managed-orders-filter-grid">
           <label><span>대행사</span><select value={filters.agencyId} onChange={(event) => updateFilter('agencyId', event.target.value)}><option value="">전체</option>{agencyOptions.map((option) => <option key={option.id} value={option.id}>{option.username}</option>)}</select></label>
