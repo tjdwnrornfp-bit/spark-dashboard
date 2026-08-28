@@ -182,6 +182,49 @@ export interface ManagedOrdersSummary {
   settlementWaitingAmount: number
 }
 
+export interface ManagerDashboardSummary {
+  managedAgencyCount: number
+  totalOrderCount: number
+  totalSettlementAmount: number
+  settlementWaitingAmount: number
+  settlementCompletedAmount: number
+  runningOrderCount: number
+  paymentWaitingOrderCount: number
+  paymentCompletedOrderCount: number
+  expiredOrderCount: number
+  stoppedOrderCount: number
+}
+
+export type ManagerAgencyOverviewSort = 'settlement_waiting' | 'orders' | 'running' | 'username'
+
+export interface ManagerAgencyOverviewItem {
+  agencyId: string
+  username: string
+  totalOrderCount: number
+  runningOrderCount: number
+  paymentWaitingOrderCount: number
+  paymentCompletedOrderCount: number
+  expiredOrderCount: number
+  stoppedOrderCount: number
+  totalSettlementAmount: number
+  settlementWaitingAmount: number
+  settlementCompletedAmount: number
+  lastOrderAt: string
+}
+
+export interface ManagerAgencyOverviewResult {
+  page: number
+  pageSize: number
+  totalPages: number
+  agencyCount: number
+  agencies: ManagerAgencyOverviewItem[]
+}
+
+export interface ManagedOrdersPreset {
+  agencyId?: string
+  settlementStatus?: ManagedOrderSettlementStatus
+}
+
 export interface ProgramTransferPreview {
   orderDbId: string
   orderNumber: string

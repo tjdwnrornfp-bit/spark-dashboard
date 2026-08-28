@@ -6,6 +6,7 @@ import type {
   ManagedOrderFilters,
   ManagedOrderRow,
   ManagedOrdersPageResult,
+  ManagedOrdersPreset,
   Order,
   PaymentStep,
   User,
@@ -113,14 +114,19 @@ function excelDateSuffix(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverMode }: {
+export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverMode, initialFilters }: {
   user: User
   members: User[]
   orders: Order[]
   paymentSteps: PaymentStep[]
   serverMode: boolean
+  initialFilters?: ManagedOrdersPreset | null
 }) {
-  const [filters, setFilters] = useState<ManagedOrderFilters>(EMPTY_FILTERS)
+  const [filters, setFilters] = useState<ManagedOrderFilters>(() => ({
+    ...EMPTY_FILTERS,
+    agencyId: initialFilters?.agencyId ?? '',
+    settlementStatus: initialFilters?.settlementStatus ?? 'all',
+  }))
   const [queryDraft, setQueryDraft] = useState('')
   const [page, setPage] = useState(1)
   const [result, setResult] = useState<ManagedOrdersPageResult | null>(null)

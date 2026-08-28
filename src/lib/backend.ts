@@ -15,6 +15,9 @@ import type {
   ManagedOrderRow,
   ManagedOrdersPageResult,
   ManagedOrdersSummary,
+  ManagerAgencyOverviewResult,
+  ManagerAgencyOverviewSort,
+  ManagerDashboardSummary,
   Notice,
   NotificationItem,
   Order,
@@ -1132,5 +1135,65 @@ export async function fetchManagedOrdersSummaryV102(): Promise<ManagedOrdersSumm
     settlementWaitingCount: numberValue(row?.settlement_waiting_count),
     totalAmount: numberValue(row?.total_amount),
     settlementWaitingAmount: numberValue(row?.settlement_waiting_amount),
+  }
+}
+
+export async function fetchManagerDashboardSummaryV103(): Promise<ManagerDashboardSummary> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_manager_dashboard_summary_v103')
+  if (error) throw error
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null
+  return {
+    managedAgencyCount: numberValue(row?.managed_agency_count),
+    totalOrderCount: numberValue(row?.total_order_count),
+    totalSettlementAmount: numberValue(row?.total_settlement_amount),
+    settlementWaitingAmount: numberValue(row?.settlement_waiting_amount),
+    settlementCompletedAmount: numberValue(row?.settlement_completed_amount),
+    runningOrderCount: numberValue(row?.running_order_count),
+    paymentWaitingOrderCount: numberValue(row?.payment_waiting_order_count),
+    paymentCompletedOrderCount: numberValue(row?.payment_completed_order_count),
+    expiredOrderCount: numberValue(row?.expired_order_count),
+    stoppedOrderCount: numberValue(row?.stopped_order_count),
+  }
+}
+
+export async function fetchManagerAgencyOverviewV103(params: {
+  page?: number
+  pageSize?: number
+  query?: string
+  sort?: ManagerAgencyOverviewSort
+} = {}): Promise<ManagerAgencyOverviewResult> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_manager_agency_overview_v103', {
+    p_page: params.page ?? 1,
+    p_page_size: params.pageSize ?? 12,
+    p_query: params.query?.trim() || null,
+    p_sort: params.sort ?? 'settlement_waiting',
+  })
+  if (error) throw error
+  const result = recordValue(data)
+  const agencies = Array.isArray(result.agencies) ? result.agencies.map((item) => {
+    const row = recordValue(item)
+    return {
+      agencyId: stringValue(row.agencyId),
+      username: stringValue(row.username),
+      totalOrderCount: numberValue(row.totalOrderCount),
+      runningOrderCount: numberValue(row.runningOrderCount),
+      paymentWaitingOrderCount: numberValue(row.paymentWaitingOrderCount),
+      paymentCompletedOrderCount: numberValue(row.paymentCompletedOrderCount),
+      expiredOrderCount: numberValue(row.expiredOrderCount),
+      stoppedOrderCount: numberValue(row.stoppedOrderCount),
+      totalSettlementAmount: numberValue(row.totalSettlementAmount),
+      settlementWaitingAmount: numberValue(row.settlementWaitingAmount),
+      settlementCompletedAmount: numberValue(row.settlementCompletedAmount),
+      lastOrderAt: stringValue(row.lastOrderAt),
+    }
+  }) : []
+  return {
+    page: Math.max(1, numberValue(result.page) || params.page || 1),
+    pageSize: Math.max(1, numberValue(result.pageSize) || params.pageSize || 12),
+    totalPages: Math.max(1, numberValue(result.totalPages) || 1),
+    agencyCount: numberValue(result.agencyCount),
+    agencies,
   }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
-import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentReversalResult, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SettlementRow, SignupDraft, User } from './domain/types'
+import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, ManagedOrdersPreset, MemberDeletionCheck, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentReversalResult, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SettlementRow, SignupDraft, User } from './domain/types'
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
@@ -181,6 +181,7 @@ export default function App() {
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
   const [remoteError, setRemoteError] = useState('')
   const [page, setPage] = useState<Page>('dashboard')
+  const [managedOrderPreset, setManagedOrderPreset] = useState<ManagedOrdersPreset | null>(null)
   const [now, setNow] = useState(() => new Date())
 
   const localUser = useMemo(() => localMembers.find((member) => member.id === localSessionUserId && member.approvalStatus === 'approved' && member.active && member.role !== null) ?? null, [localMembers, localSessionUserId])
@@ -867,11 +868,20 @@ export default function App() {
   const unreadCount = visibleNotifications.filter((item) => !item.read).length
   const activeProgram = PROGRAM_PAGE_MAP[page]
 
-  return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={setPage} onLogout={() => { setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
+  const navigate = (next: Page) => {
+    if (next === 'managedOrders') setManagedOrderPreset(null)
+    setPage(next)
+  }
+  const openManagedOrders = (preset?: ManagedOrdersPreset) => {
+    setManagedOrderPreset(preset ?? null)
+    setPage('managedOrders')
+  }
+
+  return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={navigate} onLogout={() => { setManagedOrderPreset(null); setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
-    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} onNavigate={setPage} />}
+    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
     {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} />}
+    {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} initialFilters={managedOrderPreset} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
