@@ -75,19 +75,20 @@ function sortAgencies(agencies: ManagerAgencyOverviewItem[], sort: ManagerAgency
   })
 }
 
-export function ManagerDashboard({ user, members, orders, paymentSteps, notices, serverMode, onNavigate, onOpenManagedOrders }: {
+export function ManagerDashboard({ user, members, orders, paymentSteps, notices, serverMode, refreshKey, onNavigate, onOpenManagedOrders }: {
   user: User
   members: User[]
   orders: Order[]
   paymentSteps: PaymentStep[]
   notices: Notice[]
   serverMode: boolean
+  refreshKey: number
   onNavigate: (page: Page) => void
   onOpenManagedOrders: (preset?: ManagedOrdersPreset) => void
 }) {
-  const local = useMemo(() => localDashboardData(user, members, orders, paymentSteps), [members, orders, paymentSteps, user])
-  const [summary, setSummary] = useState<ManagerDashboardSummary | null>(serverMode ? null : local.summary)
-  const [overview, setOverview] = useState<ManagerAgencyOverviewResult | null>(null)
+  const local = useMemo(() => serverMode ? null : localDashboardData(user, members, orders, paymentSteps), [members, orders, paymentSteps, serverMode, user])
+  const [serverSummary, setServerSummary] = useState<ManagerDashboardSummary | null>(null)
+  const [serverOverview, setServerOverview] = useState<ManagerAgencyOverviewResult | null>(null)
   const [queryDraft, setQueryDraft] = useState('')
   const [query, setQuery] = useState('')
   const [sort, setSort] = useState<ManagerAgencyOverviewSort>('settlement_waiting')
@@ -96,50 +97,51 @@ export function ManagerDashboard({ user, members, orders, paymentSteps, notices,
   const [overviewError, setOverviewError] = useState('')
   const pinnedNotice = notices.find((notice) => notice.pinned)
 
-  useEffect(() => {
-    if (!serverMode) {
-      setSummary(local.summary)
-      return
+  const localOverview = useMemo<ManagerAgencyOverviewResult | null>(() => {
+    if (!local) return null
+    const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR')
+    const filtered = local.agencies.filter((agency) => !normalizedQuery || agency.username.toLocaleLowerCase('ko-KR').includes(normalizedQuery))
+    const sorted = sortAgencies(filtered, sort)
+    const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
+    const safePage = Math.min(page, totalPages)
+    return {
+      page: safePage,
+      pageSize: PAGE_SIZE,
+      totalPages,
+      agencyCount: sorted.length,
+      agencies: sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
     }
+  }, [local, page, query, sort])
+
+  const summary = serverMode ? serverSummary : local?.summary ?? null
+  const overview = serverMode ? serverOverview : localOverview
+
+  useEffect(() => {
+    if (!serverMode) return
     let active = true
     void fetchManagerDashboardSummaryV103().then((result) => {
       if (!active) return
-      setSummary(result)
+      setServerSummary(result)
       setSummaryError('')
     }).catch(() => {
       if (active) setSummaryError('운영·정산 요약을 불러오지 못했습니다.')
     })
     return () => { active = false }
-  }, [local.summary, serverMode, user.id])
+  }, [refreshKey, serverMode, user.id])
 
   useEffect(() => {
-    if (!serverMode) {
-      const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR')
-      const filtered = local.agencies.filter((agency) => !normalizedQuery || agency.username.toLocaleLowerCase('ko-KR').includes(normalizedQuery))
-      const sorted = sortAgencies(filtered, sort)
-      const totalPages = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE))
-      const safePage = Math.min(page, totalPages)
-      setOverview({
-        page: safePage,
-        pageSize: PAGE_SIZE,
-        totalPages,
-        agencyCount: sorted.length,
-        agencies: sorted.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-      })
-      if (safePage !== page) setPage(safePage)
-      return
-    }
+    if (!serverMode) return
     let active = true
     void fetchManagerAgencyOverviewV103({ page, pageSize: PAGE_SIZE, query, sort }).then((result) => {
       if (!active) return
-      setOverview(result)
+      setServerOverview(result)
       setOverviewError('')
       if (result.page > result.totalPages) setPage(result.totalPages)
     }).catch(() => {
       if (active) setOverviewError('대행사별 현황을 불러오지 못했습니다.')
     })
     return () => { active = false }
-  }, [local.agencies, page, query, serverMode, sort, user.id])
+  }, [page, query, refreshKey, serverMode, sort, user.id])
 
   const openAgency = (agencyId: string, settlementStatus?: ManagedOrdersPreset['settlementStatus']) => {
     onOpenManagedOrders({ agencyId, settlementStatus })

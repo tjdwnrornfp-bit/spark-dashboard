@@ -10,9 +10,12 @@ function getErrorMessage(error: unknown): string {
     : '알림을 처리하지 못했습니다.'
 }
 
-export function NotificationsPage({ user, notifications, onRead, onReadAll, onDelete, onDeleteAll }: {
+export function NotificationsPage({ user, notifications, hasMore, loadingMore, onLoadMore, onRead, onReadAll, onDelete, onDeleteAll }: {
   user: User
   notifications: NotificationItem[]
+  hasMore: boolean
+  loadingMore: boolean
+  onLoadMore: () => Promise<void>
   onRead: (id: string) => Promise<void>
   onReadAll: (ids: string[]) => Promise<void>
   onDelete: (id: string) => Promise<void>
@@ -76,6 +79,7 @@ export function NotificationsPage({ user, notifications, onRead, onReadAll, onDe
       <section className="panel notification-panel fill-panel">
         <div className="notification-tabs"><button className={filter === 'all' ? 'active' : ''} onClick={() => setFilter('all')}>전체 <span>{allVisible.length}</span></button><button className={filter === 'unread' ? 'active' : ''} onClick={() => setFilter('unread')}>읽지 않음 <span>{unread}</span></button></div>
         {visible.length === 0 ? <div className="empty-state fill-empty-state">{filter === 'unread' ? '읽지 않은 알림이 없습니다.' : '알림이 없습니다.'}</div> : <div className="notification-list">{visible.map((item) => <article key={item.id} className={item.read ? '' : 'unread'}><button className="notification-main" onClick={() => { if (!item.read) void readOne(item.id) }}><span className="notification-icon"><Icon name={item.title.includes('회원') ? 'users' : item.title.includes('입금') ? 'wallet' : 'bell'} /></span><span><strong>{item.title}</strong><p>{item.message}</p><small>{formatDateTime(item.createdAt)}</small></span>{!item.read && <i />}</button><button className="notification-delete" disabled={deletingId === item.id} aria-label="알림 삭제" title="알림 삭제" onClick={() => void deleteOne(item.id)}><Icon name="trash" size={15} /></button></article>)}</div>}
+        {filter === 'all' && hasMore && <div className="notification-load-more"><button className="secondary-button" disabled={loadingMore} onClick={() => void onLoadMore()}>{loadingMore ? '불러오는 중...' : '이전 알림 더보기'}</button></div>}
       </section>
     </div>
   )

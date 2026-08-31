@@ -277,6 +277,28 @@ export function mapSettings(row: Record<string, unknown>): AppSettings {
   }
 }
 
+const PROFILE_COLUMNS = [
+  'id', 'username', 'role', 'approval_status', 'price_per_shot', 'active', 'requested_at', 'approved_at', 'updated_at',
+  'sponsor_id', 'sponsor_username', 'referral_code', 'group_name', 'hierarchy_depth', 'bank', 'account_number',
+  'account_holder', 'spark_price_per_shot', 'spark_plus_price_per_shot', 'spark_s_price_per_shot',
+  'spark_s_plus_price_per_shot', 'is_operations_manager', 'manager_id', 'manager_username',
+].join(',')
+
+const ORDER_COLUMNS = [
+  'id', 'order_number', 'created_by', 'creator_username', 'place_url', 'mid', 'store_name', 'keyword', 'daily_shots',
+  'operation_days', 'price_per_shot', 'supply_amount', 'vat_amount', 'total_amount', 'start_date', 'end_date', 'status',
+  'memo', 'activated_at', 'stopped_at', 'payment_notified_at', 'created_at', 'updated_at', 'sponsor_id',
+  'sponsor_username', 'creator_group_name', 'program_type', 'archived_at', 'archived_by', 'archive_reason', 'lock_version',
+  'program_transfer_state', 'program_transfer_difference', 'last_program_transfer_at', 'settlement_reversal_pending',
+].join(',')
+
+const PAYMENT_STEP_COLUMNS = [
+  'id', 'order_id', 'order_number', 'store_name', 'step_order', 'payer_id', 'payer_username', 'payee_id',
+  'payee_username', 'unit_price', 'supply_amount', 'vat_amount', 'total_amount', 'confirmed_at', 'created_at', 'program_type',
+].join(',')
+
+const NOTIFICATION_PAGE_SIZE = 100
+
 
 
 export function mapAuditLog(row: Record<string, unknown>): AuditLog {
@@ -358,64 +380,88 @@ function mapPaymentAccount(row: Record<string, unknown> | null | undefined): Pay
 
 export async function fetchProfile(userId: string): Promise<User | null> {
   const client = requiredClient()
-  const { data, error } = await client.from('profiles').select('*').eq('id', userId).maybeSingle()
+  const { data, error } = await client.from('profiles').select(PROFILE_COLUMNS).eq('id', userId).maybeSingle()
   if (error) throw error
   return data ? mapProfile(data as Record<string, unknown>) : null
 }
 
-export async function fetchRemoteSnapshot(includeAdminContacts = false): Promise<{
-  members: User[]
-  orders: Order[]
-  paymentSteps: PaymentStep[]
-  paymentAccount: PaymentAccount
-  notifications: NotificationItem[]
-  notices: Notice[]
-  settings: AppSettings
-}> {
+export async function fetchMembersSnapshot(includeAdminContacts = false): Promise<User[]> {
   const client = requiredClient()
   const contactsPromise = includeAdminContacts
     ? client.rpc('get_admin_member_contacts_v94')
     : Promise.resolve({ data: [], error: null })
-  const [profilesResult, ordersResult, activeStepsResult, accountResult, notificationsResult, noticesResult, settingsResult, contactsResult] = await Promise.all([
-    client.from('profiles').select('*').order('requested_at', { ascending: false }),
-    client.from('orders').select('*').order('created_at', { ascending: true }),
-    client.rpc('get_my_active_payment_steps_v91'),
-    client.rpc('get_my_payment_account'),
-    client.from('notifications').select('*, orders(order_number)').order('created_at', { ascending: false }),
-    client.from('notices').select('*').order('created_at', { ascending: false }),
-    client.from('app_settings').select('*').eq('id', true).single(),
+  const [profilesResult, contactsResult] = await Promise.all([
+    client.from('profiles').select(PROFILE_COLUMNS).order('requested_at', { ascending: false }),
     contactsPromise,
   ])
-
-  let stepsResult = activeStepsResult
-  if (activeStepsResult.error && ['PGRST202', '42883'].includes(String(activeStepsResult.error.code ?? ''))) {
-    stepsResult = await client.from('payment_steps').select('*').order('created_at', { ascending: true }).order('step_order', { ascending: true })
-  }
-
-  const firstError = [profilesResult, ordersResult, stepsResult, accountResult, notificationsResult, noticesResult, settingsResult, contactsResult].find((result) => result.error)?.error
+  const firstError = [profilesResult, contactsResult].find((result) => result.error)?.error
   if (firstError) throw firstError
-
-  const notifications = (notificationsResult.data ?? []).map((row: Record<string, unknown>) => {
-    const orderRelation = row.orders as Record<string, unknown> | null | undefined
-    return mapNotification({ ...row, order_number: orderRelation?.order_number })
-  })
-  const accountRow = Array.isArray(accountResult.data) ? accountResult.data[0] : accountResult.data
   const phoneByUserId = new Map<string, string>(
     (contactsResult.data ?? []).map((row: Record<string, unknown>) => [stringValue(row.user_id), stringValue(row.phone_number)]),
   )
+  return (profilesResult.data ?? []).map((row: Record<string, unknown>) => mapProfile({
+    ...row,
+    phone_number: phoneByUserId.get(stringValue(row.id)) ?? '',
+  }))
+}
 
-  return {
-    members: (profilesResult.data ?? []).map((row: Record<string, unknown>) => mapProfile({
-      ...row,
-      phone_number: phoneByUserId.get(stringValue(row.id)) ?? '',
-    })),
-    orders: (ordersResult.data ?? []).map((row: Record<string, unknown>) => mapOrder(row)),
-    paymentSteps: (stepsResult.data ?? []).map((row: Record<string, unknown>) => mapPaymentStep(row)),
-    paymentAccount: mapPaymentAccount(accountRow as Record<string, unknown> | null),
-    notifications,
-    notices: (noticesResult.data ?? []).map((row: Record<string, unknown>) => mapNotice(row)),
-    settings: mapSettings(settingsResult.data as Record<string, unknown>),
+export const fetchProfiles = fetchMembersSnapshot
+
+export async function fetchOrdersSnapshot(): Promise<Order[]> {
+  const client = requiredClient()
+  const { data, error } = await client.from('orders').select(ORDER_COLUMNS).order('created_at', { ascending: true })
+  if (error) throw error
+  return (data ?? []).map((row: Record<string, unknown>) => mapOrder(row))
+}
+
+export async function fetchPaymentStepsSnapshot(): Promise<PaymentStep[]> {
+  const client = requiredClient()
+  const activeStepsResult = await client.rpc('get_my_active_payment_steps_v91')
+  let stepsResult = activeStepsResult
+  if (activeStepsResult.error && ['PGRST202', '42883'].includes(String(activeStepsResult.error.code ?? ''))) {
+    stepsResult = await client.from('payment_steps').select(PAYMENT_STEP_COLUMNS).order('created_at', { ascending: true }).order('step_order', { ascending: true })
   }
+  if (stepsResult.error) throw stepsResult.error
+  return (stepsResult.data ?? []).map((row: Record<string, unknown>) => mapPaymentStep(row))
+}
+
+export async function fetchNotificationsSnapshot({ offset = 0, limit = NOTIFICATION_PAGE_SIZE }: { offset?: number; limit?: number } = {}): Promise<{ items: NotificationItem[]; hasMore: boolean }> {
+  const client = requiredClient()
+  const safeLimit = Math.min(200, Math.max(1, Math.trunc(limit)))
+  const safeOffset = Math.max(0, Math.trunc(offset))
+  const { data, error } = await client.from('notifications')
+    .select('id,user_id,target_role,title,message,order_id,read_at,created_at,orders(order_number)')
+    .order('created_at', { ascending: false })
+    .range(safeOffset, safeOffset + safeLimit)
+  if (error) throw error
+  const rows = data ?? []
+  const items = rows.slice(0, safeLimit).map((row: Record<string, unknown>) => {
+    const orderRelation = row.orders as Record<string, unknown> | null | undefined
+    return mapNotification({ ...row, order_number: orderRelation?.order_number })
+  })
+  return { items, hasMore: rows.length > safeLimit }
+}
+
+export async function fetchNoticesSnapshot(): Promise<Notice[]> {
+  const client = requiredClient()
+  const { data, error } = await client.from('notices').select('id,title,content,pinned,created_at').order('created_at', { ascending: false })
+  if (error) throw error
+  return (data ?? []).map((row: Record<string, unknown>) => mapNotice(row))
+}
+
+export async function fetchSettingsSnapshot(): Promise<AppSettings> {
+  const client = requiredClient()
+  const { data, error } = await client.from('app_settings').select('cutoff_hour,auto_start_hour,bank,account_number,account_holder').eq('id', true).single()
+  if (error) throw error
+  return mapSettings(data as Record<string, unknown>)
+}
+
+export async function fetchPaymentAccount(): Promise<PaymentAccount> {
+  const client = requiredClient()
+  const { data, error } = await client.rpc('get_my_payment_account')
+  if (error) throw error
+  const accountRow = Array.isArray(data) ? data[0] : data
+  return mapPaymentAccount(accountRow as Record<string, unknown> | null)
 }
 
 export async function createRemoteOrder(params: {

@@ -14,7 +14,7 @@ function adminRegistrantLabel(order: Order): string {
   return order.sponsorId ? `${group} 하위` : group
 }
 
-export function DashboardPage({ user, members, orders, paymentSteps, notices, now, serverMode, onNavigate, onOpenManagedOrders }: {
+export function DashboardPage({ user, members, orders, paymentSteps, notices, now, serverMode, refreshKey, onNavigate, onOpenManagedOrders }: {
   user: User
   members: User[]
   orders: Order[]
@@ -22,9 +22,14 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
   notices: Notice[]
   now: Date
   serverMode: boolean
+  refreshKey: number
   onNavigate: (page: Page) => void
   onOpenManagedOrders: (preset?: ManagedOrdersPreset) => void
 }) {
+  if (user.isOperationsManager) {
+    return <ManagerDashboard user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} serverMode={serverMode} refreshKey={refreshKey} onNavigate={onNavigate} onOpenManagedOrders={onOpenManagedOrders} />
+  }
+
   const activeOrders = orders.filter((order) => !order.archivedAt)
   const archivedOrderIds = new Set(orders.filter((order) => order.archivedAt).flatMap((order) => [order.dbId ?? order.id, order.id]))
   const activePaymentSteps = paymentSteps.filter((step) => !archivedOrderIds.has(step.orderDbId))
@@ -61,10 +66,6 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
       expired: list.filter((order) => order.status === '만료').length,
     }
   })
-
-  if (user.isOperationsManager) {
-    return <ManagerDashboard user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} serverMode={serverMode} onNavigate={onNavigate} onOpenManagedOrders={onOpenManagedOrders} />
-  }
 
   if (user.role !== 'admin') {
     return (

@@ -114,12 +114,13 @@ function excelDateSuffix(): string {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
 }
 
-export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverMode, initialFilters }: {
+export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverMode, refreshKey, initialFilters }: {
   user: User
   members: User[]
   orders: Order[]
   paymentSteps: PaymentStep[]
   serverMode: boolean
+  refreshKey: number
   initialFilters?: ManagedOrdersPreset | null
 }) {
   const [filters, setFilters] = useState<ManagedOrderFilters>(() => ({
@@ -135,7 +136,7 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
   const [loading, setLoading] = useState(false)
   const [exporting, setExporting] = useState(false)
   const [error, setError] = useState('')
-  const localRows = useMemo(() => localManagedRows(user, members, orders, paymentSteps), [members, orders, paymentSteps, user])
+  const localRows = useMemo(() => serverMode ? [] : localManagedRows(user, members, orders, paymentSteps), [members, orders, paymentSteps, serverMode, user])
 
   useEffect(() => {
     if (!serverMode) {
@@ -149,7 +150,7 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
       if (active) setError(caught instanceof Error ? caught.message : '대행사 목록을 불러오지 못했습니다.')
     })
     return () => { active = false }
-  }, [members, serverMode, user.id])
+  }, [members, refreshKey, serverMode, user.id])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -163,7 +164,7 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
     } finally {
       setLoading(false)
     }
-  }, [filters, localRows, page, serverMode])
+  }, [filters, localRows, page, refreshKey, serverMode])
 
   useEffect(() => { void load() }, [load])
 

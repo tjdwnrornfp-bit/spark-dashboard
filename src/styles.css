@@ -702,6 +702,7 @@ td small { margin-top: 4px; font-size: 10px; }
 .notification-list > article { display: grid; grid-template-columns: minmax(0, 1fr) 48px; align-items: stretch; border-bottom: 1px solid #eff1f4; background: #fff; }
 .notification-list > article:last-child { border-bottom: 0; }
 .notification-list > article.unread { background: #fbfdff; }
+.notification-load-more { display: flex; justify-content: center; padding: 16px; border-top: 1px solid #eff1f4; background: #fff; }
 .notification-main { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: flex-start; gap: 13px; width: 100%; min-height: 78px; padding: 16px 18px; border: 0; background: transparent; text-align: left; }
 .notification-icon { width: 36px; height: 36px; }
 .notification-main strong { font-size: 14px; }

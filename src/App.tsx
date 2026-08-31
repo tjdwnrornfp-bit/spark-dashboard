@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
 import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgramTransferResult, ManagedOrdersPreset, MemberDeletionCheck, MemberManagerBulkAssignmentResult, MemberReviewInput, Notice, NotificationItem, Order, OrderDraft, OrderStatus, Page, PaymentAccount, PaymentReversalResult, PaymentStep, ProgramTransferPreview, ProgramType, SettlementBatchResult, SettlementConfirmationInput, SettlementRow, SignupDraft, User } from './domain/types'
@@ -27,8 +27,14 @@ import {
   deleteAllRemoteNotifications,
   deleteRemoteNotice,
   deleteRemoteNotification,
+  fetchMembersSnapshot,
+  fetchNoticesSnapshot,
+  fetchNotificationsSnapshot,
+  fetchOrdersSnapshot,
+  fetchPaymentAccount,
+  fetchPaymentStepsSnapshot,
   fetchProfile,
-  fetchRemoteSnapshot,
+  fetchSettingsSnapshot,
   markAllRemoteNotificationsRead,
   markRemoteNotificationRead,
   previewRemoteBulkOrderProgramTransfer,
@@ -180,11 +186,18 @@ export default function App() {
   const [remoteNotifications, setRemoteNotifications] = useState<NotificationItem[]>([])
   const [remoteNotices, setRemoteNotices] = useState<Notice[]>([])
   const [remoteSettings, setRemoteSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
+  const [notificationsHasMore, setNotificationsHasMore] = useState(false)
+  const [notificationsLoadingMore, setNotificationsLoadingMore] = useState(false)
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured)
   const [remoteError, setRemoteError] = useState('')
+  const [resourceErrors, setResourceErrors] = useState<Record<string, string>>({})
+  const [serverDataRevision, setServerDataRevision] = useState(0)
   const [page, setPage] = useState<Page>('dashboard')
   const [managedOrderPreset, setManagedOrderPreset] = useState<ManagedOrdersPreset | null>(null)
   const [now, setNow] = useState(() => new Date())
+  const loadedResourcesRef = useRef(new Set<string>())
+  const pageRef = useRef<Page>(page)
+  pageRef.current = page
 
   const localUser = useMemo(() => localMembers.find((member) => member.id === localSessionUserId && member.approvalStatus === 'approved' && member.active && member.role !== null) ?? null, [localMembers, localSessionUserId])
   const user = isSupabaseConfigured ? remoteUser : localUser
@@ -196,24 +209,90 @@ export default function App() {
   const settings = isSupabaseConfigured ? remoteSettings : localSettings
   const paymentAccount = isSupabaseConfigured ? remotePaymentAccount : localPaymentAccount(user, localMembers, localSettings)
 
+  const loadRemoteResource = useCallback(async <T,>(name: string, loader: () => Promise<T>): Promise<T> => {
+    try {
+      const result = await loader()
+      loadedResourcesRef.current.add(name)
+      setResourceErrors((current) => {
+        if (!current[name]) return current
+        const next = { ...current }
+        delete next[name]
+        return next
+      })
+      return result
+    } catch (error) {
+      const message = errorMessage(error, `${name} 데이터를 불러오지 못했습니다.`)
+      setResourceErrors((current) => ({ ...current, [name]: message }))
+      throw error
+    }
+  }, [])
+
+  const refreshMembersRemote = useCallback(async (includeAdminContacts = false) => {
+    const next = await loadRemoteResource('members', () => fetchMembersSnapshot(includeAdminContacts))
+    setRemoteMembers(next)
+    return next
+  }, [loadRemoteResource])
+
+  const refreshOrdersRemote = useCallback(async () => {
+    const next = await loadRemoteResource('orders', fetchOrdersSnapshot)
+    setRemoteOrders(next)
+    return next
+  }, [loadRemoteResource])
+
+  const refreshPaymentStepsRemote = useCallback(async () => {
+    const next = await loadRemoteResource('paymentSteps', fetchPaymentStepsSnapshot)
+    setRemotePaymentSteps(next)
+    return next
+  }, [loadRemoteResource])
+
+  const refreshNotificationsRemote = useCallback(async () => {
+    const next = await loadRemoteResource('notifications', () => fetchNotificationsSnapshot())
+    setRemoteNotifications((current) => {
+      if (current.length <= next.items.length) return next.items
+      const firstPageIds = new Set(next.items.map((item) => item.id))
+      return [...next.items, ...current.slice(next.items.length).filter((item) => !firstPageIds.has(item.id))]
+    })
+    setNotificationsHasMore(next.hasMore)
+    return next.items
+  }, [loadRemoteResource])
+
+  const refreshNoticesRemote = useCallback(async () => {
+    const next = await loadRemoteResource('notices', fetchNoticesSnapshot)
+    setRemoteNotices(next)
+    return next
+  }, [loadRemoteResource])
+
+  const refreshSettingsRemote = useCallback(async () => {
+    const next = await loadRemoteResource('settings', fetchSettingsSnapshot)
+    setRemoteSettings(next)
+    return next
+  }, [loadRemoteResource])
+
+  const refreshPaymentAccountRemote = useCallback(async () => {
+    const next = await loadRemoteResource('paymentAccount', fetchPaymentAccount)
+    setRemotePaymentAccount(next)
+    return next
+  }, [loadRemoteResource])
+
+  const refreshSelfRemote = useCallback(async () => {
+    if (!remoteUser?.id) return null
+    const next = await loadRemoteResource('profile', () => fetchProfile(remoteUser.id))
+    if (next) setRemoteUser((current) => current?.id === next.id && current.updatedAt !== next.updatedAt ? next : current)
+    return next
+  }, [loadRemoteResource, remoteUser?.id])
+
   const refreshRemote = useCallback(async () => {
     if (!isSupabaseConfigured || !remoteUser) return
-    try {
-      const snapshot = await fetchRemoteSnapshot(remoteUser.role === 'admin')
-      setRemoteMembers(snapshot.members)
-      setRemoteOrders(snapshot.orders)
-      setRemotePaymentSteps(snapshot.paymentSteps)
-      setRemotePaymentAccount(snapshot.paymentAccount)
-      setRemoteNotifications(snapshot.notifications)
-      setRemoteNotices(snapshot.notices)
-      setRemoteSettings(snapshot.settings)
-      const refreshedSelf = snapshot.members.find((member) => member.id === remoteUser.id)
-      if (refreshedSelf && refreshedSelf.updatedAt !== remoteUser.updatedAt) setRemoteUser(refreshedSelf)
-      setRemoteError('')
-    } catch (error) {
-      setRemoteError(errorMessage(error, '서버 데이터를 불러오지 못했습니다. update_v9_stability.sql 적용 여부를 확인해 주세요.'))
-    }
-  }, [remoteUser])
+    const tasks: Promise<unknown>[] = [refreshNotificationsRemote(), refreshNoticesRemote(), refreshSelfRemote()]
+    if (!remoteUser.isOperationsManager) tasks.push(refreshOrdersRemote(), refreshPaymentStepsRemote(), refreshSettingsRemote())
+    if (pageRef.current === 'members') tasks.push(refreshMembersRemote(remoteUser.role === 'admin'))
+    if (pageRef.current === 'settlement') tasks.push(refreshPaymentAccountRemote())
+    const results = await Promise.allSettled(tasks)
+    const failed = results.find((result) => result.status === 'rejected')
+    setRemoteError(failed?.status === 'rejected'
+      ? errorMessage(failed.reason, '현재 화면의 일부 서버 데이터를 불러오지 못했습니다.')
+      : '')
+  }, [refreshMembersRemote, refreshNoticesRemote, refreshNotificationsRemote, refreshOrdersRemote, refreshPaymentAccountRemote, refreshPaymentStepsRemote, refreshSelfRemote, refreshSettingsRemote, remoteUser])
 
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 5_000); return () => window.clearInterval(timer) }, [])
 
@@ -242,29 +321,121 @@ export default function App() {
     }
     void restoreSession()
     const { data } = client.auth.onAuthStateChange((event: string, session: { user?: { id?: string } } | null) => {
-      if (event === 'SIGNED_OUT' || !session?.user?.id) { setRemoteUser(null); setRemoteMembers([]); setRemoteOrders([]); setRemotePaymentSteps([]); setRemoteNotifications([]); setRemoteNotices([]); return }
+      if (event === 'SIGNED_OUT' || !session?.user?.id) {
+        setRemoteUser(null)
+        setRemoteMembers([])
+        setRemoteOrders([])
+        setRemotePaymentSteps([])
+        setRemoteNotifications([])
+        setRemoteNotices([])
+        setNotificationsHasMore(false)
+        setResourceErrors({})
+        loadedResourcesRef.current.clear()
+        return
+      }
       window.setTimeout(() => void fetchProfile(session.user?.id ?? '').then((profile) => { if (profile?.approvalStatus === 'approved' && profile.active && profile.role !== null) setRemoteUser(profile) }).catch(() => undefined), 0)
     })
     return () => { active = false; data.subscription.unsubscribe() }
   }, [])
 
   useEffect(() => {
+    if (!isSupabaseConfigured || !remoteUser) return
+    let active = true
+    const tasks: Promise<unknown>[] = [refreshNotificationsRemote(), refreshNoticesRemote()]
+    if (!remoteUser.isOperationsManager) tasks.push(refreshOrdersRemote(), refreshPaymentStepsRemote(), refreshSettingsRemote())
+    void Promise.allSettled(tasks).then((results) => {
+      if (!active) return
+      const failed = results.find((result) => result.status === 'rejected')
+      setRemoteError(failed?.status === 'rejected'
+        ? errorMessage(failed.reason, '초기 화면 데이터를 모두 불러오지 못했습니다.')
+        : '')
+    })
+    return () => { active = false }
+  }, [refreshNoticesRemote, refreshNotificationsRemote, refreshOrdersRemote, refreshPaymentStepsRemote, refreshSettingsRemote, remoteUser?.id, remoteUser?.isOperationsManager])
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !remoteUser) return
+    if (page === 'members' && !loadedResourcesRef.current.has('members')) {
+      void refreshMembersRemote(remoteUser.role === 'admin').catch(() => undefined)
+    }
+    if (page === 'settlement') {
+      if (!loadedResourcesRef.current.has('paymentAccount')) void refreshPaymentAccountRemote().catch(() => undefined)
+      if (!loadedResourcesRef.current.has('orders')) void refreshOrdersRemote().catch(() => undefined)
+      if (!loadedResourcesRef.current.has('paymentSteps')) void refreshPaymentStepsRemote().catch(() => undefined)
+      if (!loadedResourcesRef.current.has('settings')) void refreshSettingsRemote().catch(() => undefined)
+    }
+  }, [page, refreshMembersRemote, refreshOrdersRemote, refreshPaymentAccountRemote, refreshPaymentStepsRemote, refreshSettingsRemote, remoteUser])
+
+  useEffect(() => {
     if (!isSupabaseConfigured || !supabase || !remoteUser) return
     const client = supabase
-    void refreshRemote()
-    let refreshTimer: number | null = null
-    const scheduleRefresh = () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); refreshTimer = window.setTimeout(() => void refreshRemote(), 180) }
-    const channel = client.channel(`spark-dashboard-v8-${remoteUser.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_steps' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlement_batches' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, scheduleRefresh)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, scheduleRefresh)
+    const resourceTimers = new Map<string, number>()
+    let serverViewTimer: number | null = null
+    const schedule = (name: string, refresh: () => Promise<unknown>) => {
+      const previous = resourceTimers.get(name)
+      if (previous !== undefined) window.clearTimeout(previous)
+      resourceTimers.set(name, window.setTimeout(() => {
+        resourceTimers.delete(name)
+        void refresh().catch(() => undefined)
+      }, 320))
+    }
+    const scheduleServerViews = () => {
+      if (serverViewTimer !== null) window.clearTimeout(serverViewTimer)
+      serverViewTimer = window.setTimeout(() => {
+        serverViewTimer = null
+        setServerDataRevision((current) => current + 1)
+      }, 420)
+    }
+    const channel = client.channel(`spark-dashboard-v105-${remoteUser.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => {
+        if (!remoteUser.isOperationsManager) schedule('orders', refreshOrdersRemote)
+        scheduleServerViews()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_steps' }, () => {
+        if (!remoteUser.isOperationsManager) schedule('paymentSteps', refreshPaymentStepsRemote)
+        scheduleServerViews()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlement_batches' }, scheduleServerViews)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+        schedule('profile', refreshSelfRemote)
+        if (pageRef.current === 'members') schedule('members', () => refreshMembersRemote(remoteUser.role === 'admin'))
+        scheduleServerViews()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => schedule('notifications', refreshNotificationsRemote))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notices' }, () => schedule('notices', refreshNoticesRemote))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'app_settings' }, () => {
+        if (loadedResourcesRef.current.has('settings')) schedule('settings', refreshSettingsRemote)
+      })
       .subscribe()
-    return () => { if (refreshTimer !== null) window.clearTimeout(refreshTimer); void client.removeChannel(channel) }
-  }, [refreshRemote, remoteUser])
+    return () => {
+      resourceTimers.forEach((timer) => window.clearTimeout(timer))
+      if (serverViewTimer !== null) window.clearTimeout(serverViewTimer)
+      void client.removeChannel(channel)
+    }
+  }, [refreshMembersRemote, refreshNoticesRemote, refreshNotificationsRemote, refreshOrdersRemote, refreshPaymentStepsRemote, refreshSelfRemote, refreshSettingsRemote, remoteUser])
+
+  const loadMoreNotifications = useCallback(async () => {
+    if (!isSupabaseConfigured || notificationsLoadingMore || !notificationsHasMore) return
+    setNotificationsLoadingMore(true)
+    try {
+      const next = await loadRemoteResource('notifications', () => fetchNotificationsSnapshot({ offset: remoteNotifications.length }))
+      setRemoteNotifications((current) => {
+        const existingIds = new Set(current.map((item) => item.id))
+        return [...current, ...next.items.filter((item) => !existingIds.has(item.id))]
+      })
+      setNotificationsHasMore(next.hasMore)
+    } finally {
+      setNotificationsLoadingMore(false)
+    }
+  }, [loadRemoteResource, notificationsHasMore, notificationsLoadingMore, remoteNotifications.length])
+
+  const refreshOrderEffectsRemote = useCallback(async (includeOrders = true) => {
+    const tasks: Promise<unknown>[] = [refreshPaymentStepsRemote(), refreshNotificationsRemote()]
+    if (includeOrders) tasks.push(refreshOrdersRemote())
+    const results = await Promise.allSettled(tasks)
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed?.status === 'rejected') throw failed.reason
+  }, [refreshNotificationsRemote, refreshOrdersRemote, refreshPaymentStepsRemote])
 
   useEffect(() => {
     if (isSupabaseConfigured) return
@@ -376,7 +547,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const order = await createRemoteOrder({ programType: draft.programType, placeUrl: draft.placeUrl.trim(), mid: extractMid(draft.placeUrl), storeName: draft.storeName.trim(), keyword: draft.keyword.trim(), dailyShots: Number(draft.dailyShots), operationDays: Number(draft.operationDays), startDate: draft.startDate, memo: draft.memo.trim() })
       setRemoteOrders((current) => [...current.filter((item) => item.dbId !== order.dbId), order])
-      void refreshRemote()
+      void refreshOrderEffectsRemote(false).catch(() => undefined)
       return order
     }
     const order = createOrder(user, draft, localSettings, localOrders, new Date())
@@ -401,7 +572,7 @@ export default function App() {
         created.forEach((order) => dedup.set(order.dbId ?? order.id, order))
         return Array.from(dedup.values())
       })
-      void refreshRemote()
+      void refreshOrderEffectsRemote(false).catch(() => undefined)
       return created
     }
     const existing = [...localOrders]
@@ -440,7 +611,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const result = await transferRemoteOrderProgram(order, targetProgram, reason)
       setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (result.order.dbId ?? result.order.id) ? result.order : item))
-      await refreshRemote()
+      await refreshOrderEffectsRemote(false)
       return
     }
 
@@ -578,7 +749,7 @@ export default function App() {
       const result = await transferRemoteBulkOrderProgram(selectedOrders, targetProgram, reason)
       const updatedById = new Map(result.items.flatMap((item) => item.order ? [[item.order.dbId ?? item.order.id, item.order] as const] : []))
       setRemoteOrders((current) => current.map((item) => updatedById.get(item.dbId ?? item.id) ?? item))
-      await refreshRemote()
+      await refreshOrderEffectsRemote(false)
       return result
     }
 
@@ -615,7 +786,7 @@ export default function App() {
       const orderKey = updated.dbId ?? updated.id
       setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === orderKey ? updated : item))
       setRemotePaymentSteps((current) => current.filter((step) => step.orderDbId !== orderKey))
-      void refreshRemote()
+      void refreshNotificationsRemote().catch(() => undefined)
       return
     }
     const nowIso = new Date().toISOString()
@@ -627,7 +798,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const updated = await restoreRemoteOrder(order, reason)
       setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === (updated.dbId ?? updated.id) ? updated : item))
-      await refreshRemote()
+      await refreshOrderEffectsRemote(false)
       return
     }
     const nowIso = new Date().toISOString()
@@ -674,7 +845,6 @@ export default function App() {
       await deleteRemoteMemberAccount(member.id)
       setRemoteMembers((current) => current.filter((candidate) => candidate.id !== member.id))
       setRemoteNotifications((current) => current.filter((item) => item.userId !== member.id))
-      await refreshRemote()
       return
     }
     const check = await handleMemberDeletionCheck(member)
@@ -750,7 +920,6 @@ export default function App() {
         const updated = updatedById.get(candidate.id)
         return updated ? { ...candidate, ...updated, phoneNumber: candidate.phoneNumber } : candidate
       }))
-      await refreshRemote()
       return result
     }
 
@@ -826,7 +995,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const updated = await confirmRemotePaymentStep(step.id)
       setRemotePaymentSteps((current) => current.map((item) => item.id === updated.id ? { ...item, confirmedAt: updated.confirmedAt, canConfirm: false } : item))
-      void refreshRemote()
+      void refreshOrderEffectsRemote().catch(() => undefined)
       return
     }
     const confirmedAt = new Date().toISOString()
@@ -860,7 +1029,7 @@ export default function App() {
         expectedOrderVersion: step.orderLockVersion,
         reason,
       })
-      await refreshRemote()
+      await refreshOrderEffectsRemote()
       return result
     }
 
@@ -909,7 +1078,7 @@ export default function App() {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (!isSupabaseConfigured) throw new Error('로컬 모드에서는 정산 묶음 서버 기록을 사용할 수 없습니다.')
     const result = await confirmSettlementQuoteV92(quoteId, confirmations, memo)
-    await refreshRemote()
+    await refreshOrderEffectsRemote()
     return result
   }
 
@@ -945,6 +1114,7 @@ export default function App() {
   const visibleNotifications = notifications.filter((item) => (item.role === 'all' || item.role === user.role) && (item.userId === null || item.userId === user.id))
   const unreadCount = visibleNotifications.filter((item) => !item.read).length
   const activeProgram = PROGRAM_PAGE_MAP[page]
+  const partialErrorMessages = Object.values(resourceErrors)
 
   const navigate = (next: Page) => {
     if (next === 'managedOrders') setManagedOrderPreset(null)
@@ -957,11 +1127,12 @@ export default function App() {
 
   return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={navigate} onLogout={() => { setManagedOrderPreset(null); setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
-    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
-    {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} initialFilters={managedOrderPreset} />}
+    {!remoteError && partialErrorMessages.length > 0 && <p className="inline-message error">일부 데이터가 최신 상태가 아닐 수 있습니다. {partialErrorMessages[0]} <button className="text-button" onClick={() => void refreshRemote()}>다시 불러오기</button></p>}
+    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
+    {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} hasMore={isSupabaseConfigured && notificationsHasMore} loadingMore={notificationsLoadingMore} onLoadMore={loadMoreNotifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
+    {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
-    {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
+    {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}

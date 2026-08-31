@@ -140,6 +140,7 @@ export function SettlementPage({
   paymentSteps,
   paymentAccount,
   settings,
+  refreshKey,
   onSettingsChange,
   onConfirmPayment,
   onReversePayment,
@@ -151,6 +152,7 @@ export function SettlementPage({
   paymentSteps: PaymentStep[]
   paymentAccount: PaymentAccount
   settings: AppSettings
+  refreshKey: number
   onSettingsChange: (settings: AppSettings) => Promise<void>
   onConfirmPayment: (step: PaymentStep) => Promise<void>
   onReversePayment: (step: SettlementRow, reason: string) => Promise<PaymentReversalResult>
@@ -349,7 +351,7 @@ export function SettlementPage({
     } finally {
       setSettlementLoading(false)
     }
-  }, [filters, page])
+  }, [filters, page, refreshKey])
 
   const loadSettlementMeta = useCallback(async () => {
     if (!isSupabaseConfigured) return
@@ -365,7 +367,7 @@ export function SettlementPage({
     } catch (error) {
       setSettlementError(getErrorMessage(error))
     }
-  }, [])
+  }, [refreshKey])
 
   const loadCompanyOverview = useCallback(async () => {
     if (!isSupabaseConfigured || user.role !== 'admin') return
@@ -385,7 +387,7 @@ export function SettlementPage({
     } finally {
       setCompanyOverviewLoading(false)
     }
-  }, [companyOverviewPage, companyOverviewQuery, companyOverviewSort, user.role])
+  }, [companyOverviewPage, companyOverviewQuery, companyOverviewSort, refreshKey, user.role])
 
   const refreshSettlementData = useCallback(async () => {
     await Promise.all([loadSettlementPage(), loadSettlementMeta(), loadCompanyOverview()])
@@ -418,7 +420,7 @@ export function SettlementPage({
 
   useEffect(() => {
     void loadCompanyOverview()
-  }, [loadCompanyOverview, orders, paymentSteps, user.id])
+  }, [loadCompanyOverview, user.id])
 
   useEffect(() => {
     if (!isSupabaseConfigured) {
