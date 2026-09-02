@@ -297,6 +297,11 @@ export default function App() {
   useEffect(() => { const timer = window.setInterval(() => setNow(new Date()), 5_000); return () => window.clearInterval(timer) }, [])
 
   useEffect(() => {
+    if (user && page === 'managedOrders' && user.isOperationsManager !== true) {
+      setManagedOrderPreset(null)
+      setPage('dashboard')
+      return
+    }
     if (user?.isOperationsManager && !(['dashboard', 'notifications', 'managedOrders', 'members', 'myinfo', 'notices'] as Page[]).includes(page)) setPage('dashboard')
   }, [page, user?.isOperationsManager])
 
@@ -1113,29 +1118,40 @@ export default function App() {
 
   const visibleNotifications = notifications.filter((item) => (item.role === 'all' || item.role === user.role) && (item.userId === null || item.userId === user.id))
   const unreadCount = visibleNotifications.filter((item) => !item.read).length
-  const activeProgram = PROGRAM_PAGE_MAP[page]
+  const renderedPage: Page = page === 'managedOrders' && user.isOperationsManager !== true ? 'dashboard' : page
+  const activeProgram = PROGRAM_PAGE_MAP[renderedPage]
   const partialErrorMessages = Object.values(resourceErrors)
 
   const navigate = (next: Page) => {
+    if (next === 'managedOrders' && user.isOperationsManager !== true) {
+      setManagedOrderPreset(null)
+      setPage('dashboard')
+      return
+    }
     if (next === 'managedOrders') setManagedOrderPreset(null)
     setPage(next)
   }
   const openManagedOrders = (preset?: ManagedOrdersPreset) => {
+    if (user.isOperationsManager !== true) {
+      setManagedOrderPreset(null)
+      setPage('dashboard')
+      return
+    }
     setManagedOrderPreset(preset ?? null)
     setPage('managedOrders')
   }
 
-  return <AppShell user={user} page={page} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={navigate} onLogout={() => { setManagedOrderPreset(null); setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
+  return <AppShell user={user} page={renderedPage} unreadCount={unreadCount} serverMode={isSupabaseConfigured} onNavigate={navigate} onLogout={() => { setManagedOrderPreset(null); setPage('dashboard'); if (isSupabaseConfigured && supabase) void supabase.auth.signOut(); else setLocalSessionUserId(null) }}>
     {remoteError && <div className="server-error-banner">{remoteError}<button onClick={() => void refreshRemote()}>다시 불러오기</button></div>}
     {!remoteError && partialErrorMessages.length > 0 && <p className="inline-message error">일부 데이터가 최신 상태가 아닐 수 있습니다. {partialErrorMessages[0]} <button className="text-button" onClick={() => void refreshRemote()}>다시 불러오기</button></p>}
-    {page === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
-    {page === 'notifications' && <NotificationsPage user={user} notifications={notifications} hasMore={isSupabaseConfigured && notificationsHasMore} loadingMore={notificationsLoadingMore} onLoadMore={loadMoreNotifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
-    {page === 'managedOrders' && user.isOperationsManager && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
+    {renderedPage === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
+    {renderedPage === 'notifications' && <NotificationsPage user={user} notifications={notifications} hasMore={isSupabaseConfigured && notificationsHasMore} loadingMore={notificationsLoadingMore} onLoadMore={loadMoreNotifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
+    {renderedPage === 'managedOrders' && user.isOperationsManager === true && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
-    {page === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
-    {page === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
-    {page === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
-    {page === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
-    {page === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}
+    {renderedPage === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
+    {renderedPage === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
+    {renderedPage === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
+    {renderedPage === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
+    {renderedPage === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}
   </AppShell>
 }

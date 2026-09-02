@@ -39,6 +39,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
   }
 
   const navItems = NAV_ITEMS.filter((item) => {
+    if (item.page === 'managedOrders') return user.isOperationsManager === true
     if (user.isOperationsManager) return MANAGER_PAGES.has(item.page)
     if (item.page === 'operations') return user.role === 'admin'
     return true
