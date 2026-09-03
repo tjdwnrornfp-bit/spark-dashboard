@@ -1,3 +1,4 @@
+import { currentGroupNameForOrder } from '../lib/order'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
@@ -72,7 +73,7 @@ function adminRegistrantLabel(step: PaymentStep, orders: Order[]): string {
   if (richStep.registrantGroupName !== undefined) return richStep.registrantGroupName.trim() || '미지정 그룹'
   const order = orders.find((item) => (item.dbId ?? item.id) === step.orderDbId || item.id === step.orderNumber)
   if (!order) return '미지정 그룹'
-  return order.creatorGroupName.trim() || '미지정 그룹'
+  return currentGroupNameForOrder(order).trim() || '미지정 그룹'
 }
 
 function toSettlementRow(step: PaymentStep, orders: Order[]): SettlementRow {
@@ -82,7 +83,7 @@ function toSettlementRow(step: PaymentStep, orders: Order[]): SettlementRow {
     mid: order?.mid ?? '',
     registrantId: order?.createdBy ?? '',
     registrantUsername: order?.creatorUsername ?? '',
-    registrantGroupName: order?.creatorGroupName ?? '',
+    registrantGroupName: order ? currentGroupNameForOrder(order) : '',
     startDate: order?.startDate ?? '',
     orderStatus: order?.status ?? '입금대기',
     orderLockVersion: order?.lockVersion ?? 1,
@@ -262,7 +263,7 @@ export function SettlementPage({
       const current = grouped.get(key) ?? {
         registrantId: order.createdBy,
         username: order.creatorUsername || '-',
-        groupName: order.creatorGroupName.trim() || '미지정 그룹',
+        groupName: currentGroupNameForOrder(order).trim() || '미지정 그룹',
         totalOrders: 0,
         waitingOrderCount: 0,
         waitingAmount: 0,
@@ -1006,7 +1007,7 @@ export function SettlementPage({
         <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-batch-history-table"><thead><tr><th>묶음번호</th><th>입금자</th><th>건수</th><th>확인금액</th><th>확인시각</th><th>상세</th></tr></thead><tbody>{batchHistory.map((batch) => <tr key={batch.id}><td><strong>{batch.batchNumber}</strong>{batch.memo && <small>{batch.memo}</small>}</td><td>{batch.payerUsername}</td><td>{batch.itemCount.toLocaleString('ko-KR')}건</td><td><strong>{formatWon(batch.actualAmount)}</strong></td><td>{formatDateTime(batch.confirmedAt)}</td><td><button className="secondary-button small" disabled={batchDetailLoadingId === batch.id} onClick={() => void openBatchDetail(batch)}>{batchDetailLoadingId === batch.id ? '조회 중' : '포함 작업'}</button></td></tr>)}</tbody></table></div>
       </section>)}
 
-      <section className="panel compact-panel fill-panel settlement-orders-panel"><div className="panel-header"><div><h2>{user.role === 'admin' ? '전체 작업 결제 상태' : '내 작업 결제 상태'}</h2><p>필요한 입금 확인이 모두 끝나면 작업이 입금완료로 변경됩니다.</p></div></div>{visibleOrders.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table"><table className="simple-table settlement-table settlement-orders-table"><thead><tr>{user.role === 'admin' && <th>등록 그룹</th>}<th>상호명</th><th>{user.role === 'admin' ? '관리자 정산액' : '접수금액'}</th><th>시작일</th><th>상태</th></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id}>{user.role === 'admin' && <td>{order.creatorGroupName || '미지정 그룹'}</td>}<td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td><strong>{formatWon(orderSettlementAmount(order))}</strong></td><td>{formatDate(order.startDate)}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}</section>
+      <section className="panel compact-panel fill-panel settlement-orders-panel"><div className="panel-header"><div><h2>{user.role === 'admin' ? '전체 작업 결제 상태' : '내 작업 결제 상태'}</h2><p>필요한 입금 확인이 모두 끝나면 작업이 입금완료로 변경됩니다.</p></div></div>{visibleOrders.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table"><table className="simple-table settlement-table settlement-orders-table"><thead><tr>{user.role === 'admin' && <th>등록 그룹</th>}<th>상호명</th><th>{user.role === 'admin' ? '관리자 정산액' : '접수금액'}</th><th>시작일</th><th>상태</th></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id}>{user.role === 'admin' && <td>{currentGroupNameForOrder(order) || '미지정 그룹'}</td>}<td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td><strong>{formatWon(orderSettlementAmount(order))}</strong></td><td>{formatDate(order.startDate)}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}</section>
 
       {selectedCount > 0 && <div className="settlement-selection-bar">
         <div><strong>{selectedCount.toLocaleString('ko-KR')}건 선택</strong><span>예정 입금액 {formatWon(selectedAmount)}</span>{selectAllFiltered && <small>검색 결과 전체 선택 · 제외 {excludedRows.size}건</small>}</div>

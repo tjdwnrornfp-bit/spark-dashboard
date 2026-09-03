@@ -19,6 +19,7 @@ const EMPTY_HEALTH: OperationsHealth = {
 
 const ACTION_LABELS: Record<string, string> = {
   'order.created': '작업 접수',
+  'order.admin_assigned': '관리자 작업 부여',
   'order.status_changed': '상태 변경',
   'order.archived': '작업 보관',
   'order.restored': '작업 복원',

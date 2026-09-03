@@ -1,3 +1,4 @@
+import { currentGroupNameForOrder } from '../lib/order'
 import { useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
@@ -31,7 +32,7 @@ export function AdminOrdersExportModal({ orders, now, onClose }: { orders: Order
       .filter((order) => !order.archivedAt)
       .filter((order) => programs.has(order.programType ?? 'spark'))
       .filter((order) => statuses.has(order.status))
-      .filter((order) => !normalizedGroup || includesText(order.creatorGroupName || '', normalizedGroup))
+      .filter((order) => !normalizedGroup || includesText(currentGroupNameForOrder(order) || '', normalizedGroup))
       .filter((order) => !normalizedRegistrant || includesText(order.creatorUsername, normalizedRegistrant))
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
   }, [groupQuery, orders, programs, registrantQuery, statuses])
@@ -130,7 +131,7 @@ export function AdminOrdersExportModal({ orders, now, onClose }: { orders: Order
           {filtered.map((order) => <label key={orderKey(order)} className={selectedIds.has(orderKey(order)) ? 'selected' : ''}>
             <input type="checkbox" checked={selectedIds.has(orderKey(order))} onChange={() => toggleOrder(order)} />
             <span className="export-order-program">{ADMIN_EXCEL_PROGRAM_LABELS[order.programType ?? 'spark']}</span>
-            <span><strong>{order.storeName}</strong><small>{order.creatorUsername} · {order.creatorGroupName || '-'} · {order.keyword}</small></span>
+            <span><strong>{order.storeName}</strong><small>{order.creatorUsername} · {currentGroupNameForOrder(order) || '-'} · {order.keyword}</small></span>
             <span className="export-order-status">{order.status}</span>
           </label>)}
         </div>)}

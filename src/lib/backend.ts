@@ -1,3 +1,4 @@
+import type { AdminAssignmentResult, AdminAssignmentRow } from './adminAssignment'
 import type {
   AccountDraft,
   AppSettings,
@@ -64,7 +65,7 @@ function numberValue(value: unknown): number {
 }
 
 export function mapProfile(row: Record<string, unknown>): User {
-  const sparkPrice = numberValue(row.spark_price_per_shot || row.price_per_shot)
+  const sparkPrice = numberValue(row.spark_price_per_shot ?? row.price_per_shot)
   return {
     id: stringValue(row.id),
     username: stringValue(row.username),
@@ -391,7 +392,7 @@ export async function fetchMembersSnapshot(includeAdminContacts = false): Promis
     ? client.rpc('get_admin_member_contacts_v94')
     : Promise.resolve({ data: [], error: null })
   const [profilesResult, contactsResult] = await Promise.all([
-    client.from('profiles').select(PROFILE_COLUMNS).order('requested_at', { ascending: false }),
+    fetchAllSnapshotRows('profiles', PROFILE_COLUMNS, 'requested_at'),
     contactsPromise,
   ])
   const firstError = [profilesResult, contactsResult].find((result) => result.error)?.error
@@ -407,9 +408,21 @@ export async function fetchMembersSnapshot(includeAdminContacts = false): Promis
 
 export const fetchProfiles = fetchMembersSnapshot
 
+// Preserve the existing snapshot architecture while avoiding the Data API's per-page cap.
+async function fetchAllSnapshotRows(table: string, columns: string, sortColumn: string) {
+  const rows: Record<string, unknown>[] = []
+  const limit = 1000
+  for (let offset = 0; ; offset += limit) {
+    const { data, error } = await requiredClient().from(table).select(columns)
+      .order(sortColumn, { ascending: false }).order('id', { ascending: false }).range(offset, offset + limit - 1)
+    if (error) return { data: null, error }
+    rows.push(...(data ?? []))
+    if ((data ?? []).length < limit) return { data: rows, error: null }
+  }
+}
+
 export async function fetchOrdersSnapshot(): Promise<Order[]> {
-  const client = requiredClient()
-  const { data, error } = await client.from('orders').select(ORDER_COLUMNS).order('created_at', { ascending: true })
+  const { data, error } = await fetchAllSnapshotRows('orders', ORDER_COLUMNS, 'created_at')
   if (error) throw error
   return (data ?? []).map((row: Record<string, unknown>) => mapOrder(row))
 }
@@ -1299,4 +1312,29 @@ export async function fetchManagerAgencyOverviewV103(params: {
     agencyCount: numberValue(result.agencyCount),
     agencies,
   }
+}
+
+function adminAssignmentPayload(draft: OrderDraft) {
+  return { program_type: draft.programType, place_url: draft.placeUrl.trim(), mid: extractMid(draft.placeUrl),
+    store_name: draft.storeName.trim(), keyword: draft.keyword.trim(), daily_shots: Number(draft.dailyShots),
+    operation_days: Number(draft.operationDays), start_date: draft.startDate, memo: draft.memo.trim() }
+}
+
+export async function adminCreateRemoteOrder(member: User, draft: OrderDraft, requestId: string): Promise<Order> {
+  const { data, error } = await requiredClient().rpc('admin_create_order_for_member_v106', {
+    p_target_user_id: member.id, p_item: adminAssignmentPayload(draft), p_request_id: requestId,
+  })
+  if (error) throw error
+  return mapOrder(data)
+}
+
+export async function adminCreateRemoteOrdersBulk(rows: AdminAssignmentRow[], requestId: string): Promise<AdminAssignmentResult[]> {
+  const { data, error } = await requiredClient().rpc('admin_bulk_create_orders_for_members_v106', {
+    p_items: rows.map((row) => ({ ...adminAssignmentPayload(row.draft), target_username: row.targetUsername, row_number: row.rowNumber })),
+    p_request_id: requestId,
+  })
+  if (error) throw error
+  return (data.items ?? []).map((item: Record<string, unknown>) => ({ rowNumber: Number(item.rowNumber),
+    status: item.status === 'success' ? 'success' : 'failed', message: item.message ? String(item.message) : undefined,
+    order: item.order ? mapOrder(item.order as Record<string, unknown>) : undefined }))
 }

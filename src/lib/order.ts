@@ -3,6 +3,10 @@ import { calculateOperationDates, earliestOrderStartDate, isIsoDate, todayInSeou
 import { calculateAmount } from './money'
 import { getUserProgramPrice, labelForProgram, orderPrefixForProgram } from './program'
 
+export function currentGroupNameForOrder(order: Order): string {
+  return order.currentCreatorGroupName ?? order.creatorGroupName
+}
+
 export function extractMid(url: string): string {
   const value = url.trim()
   const pathMatch = value.match(/(?:m\.)?place\.naver\.com\/(?:place|restaurant|hairshop|hospital|cafe|accommodation)\/(\d+)/i)
@@ -16,10 +20,12 @@ export function extractMid(url: string): string {
 export function validateDraft(draft: OrderDraft, now = new Date()): Record<string, string> {
   const errors: Record<string, string> = {}
   if (!extractMid(draft.placeUrl)) errors.placeUrl = 'MID를 확인할 수 있는 네이버 플레이스 URL을 입력해 주세요.'
+  if (Array.from(draft.storeName.trim()).length > 50) errors.storeName = '상호명은 50자 이하로 입력해 주세요.'
   if (!draft.storeName.trim()) errors.storeName = '상호명을 입력해 주세요.'
+  if (Array.from(draft.keyword.trim()).length > 50) errors.keyword = '대표 키워드는 50자 이하로 입력해 주세요.'
   if (!draft.keyword.trim()) errors.keyword = '대표 키워드를 입력해 주세요.'
-  if (!Number.isInteger(Number(draft.dailyShots)) || Number(draft.dailyShots) < 1) errors.dailyShots = '1 이상의 정수를 입력해 주세요.'
-  if (!Number.isInteger(Number(draft.operationDays)) || Number(draft.operationDays) < 1) errors.operationDays = '1 이상의 정수를 입력해 주세요.'
+  if (!Number.isInteger(Number(draft.dailyShots)) || Number(draft.dailyShots) < 1 || Number(draft.dailyShots) > 2147483647) errors.dailyShots = '1 이상의 정수를 입력해 주세요.'
+  if (!Number.isInteger(Number(draft.operationDays)) || Number(draft.operationDays) < 1 || Number(draft.operationDays) > 2147483647) errors.operationDays = '1 이상의 정수를 입력해 주세요.'
   if (!isIsoDate(draft.startDate)) errors.startDate = '시작일을 선택해 주세요.'
   else if (draft.startDate < earliestOrderStartDate(now)) errors.startDate = '시작일은 익일부터 선택할 수 있습니다.'
   if (draft.memo.length > 300) errors.memo = '메모는 300자 이하로 입력해 주세요.'

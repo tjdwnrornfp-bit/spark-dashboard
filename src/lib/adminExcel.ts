@@ -1,3 +1,4 @@
+import { currentGroupNameForOrder } from './order'
 import { utils, writeFileXLSX } from 'xlsx'
 import type { Order, ProgramType } from '../domain/types'
 
@@ -59,7 +60,7 @@ export function createAdminOrdersWorkbook({
     ADMIN_EXCEL_HEADERS,
     ...sorted.map((order) => [
       order.creatorUsername,
-      order.creatorGroupName || '-',
+      currentGroupNameForOrder(order) || '-',
       ADMIN_EXCEL_PROGRAM_LABELS[order.programType ?? 'spark'],
       order.keyword,
       order.mid,

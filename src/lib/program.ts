@@ -48,10 +48,10 @@ export function unitPriceLabelForProgram(programType: ProgramType): string {
 
 export function getProgramPriceMap(user: User): ProgramPriceMap {
   return {
-    spark: user.sparkPricePerShot || user.pricePerShot || 0,
+    spark: user.sparkPricePerShot ?? user.pricePerShot ?? 0,
     spark_plus: user.sparkPlusPricePerShot || 0,
     spark_s: user.sparkSPricePerShot || 0,
-    spark_s_plus: user.sparkSPlusPricePerShot ?? 40,
+    spark_s_plus: user.sparkSPlusPricePerShot ?? 0,
   }
 }
 

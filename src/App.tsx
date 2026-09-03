@@ -1,3 +1,5 @@
+import { assignmentErrors } from './lib/adminAssignment'
+import type { AdminAssignmentResult, AdminAssignmentRow } from './lib/adminAssignment'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AppShell } from './components/AppShell'
 import { DEFAULT_SETTINGS, DEMO_NOTICES, DEMO_NOTIFICATIONS, DEMO_USERS, makeDemoOrders, makeDemoPaymentSteps } from './data/demo'
@@ -14,6 +16,8 @@ import { OrdersPage } from './features/OrdersPage'
 import { SettlementPage } from './features/SettlementPage'
 import { useLocalStorage } from './hooks/useLocalStorage'
 import {
+  adminCreateRemoteOrder,
+  adminCreateRemoteOrdersBulk,
   archiveRemoteOrder,
   assignRemoteMemberManager,
   bulkAssignRemoteMemberManager,
@@ -202,7 +206,13 @@ export default function App() {
   const localUser = useMemo(() => localMembers.find((member) => member.id === localSessionUserId && member.approvalStatus === 'approved' && member.active && member.role !== null) ?? null, [localMembers, localSessionUserId])
   const user = isSupabaseConfigured ? remoteUser : localUser
   const members = isSupabaseConfigured ? remoteMembers : localMembers
-  const orders = isSupabaseConfigured ? remoteOrders : localOrders
+  const sourceOrders = isSupabaseConfigured ? remoteOrders : localOrders
+  const orders = useMemo(() => {
+    const currentMembers = new Map(members.map((member) => [member.id, member]))
+    return sourceOrders.map((order) => ({ ...order,
+      currentCreatorGroupName: currentMembers.get(order.createdBy)?.groupName ?? (user?.role === 'admin' ? '' : undefined),
+    }))
+  }, [sourceOrders, members, user?.role])
   const paymentSteps = isSupabaseConfigured ? remotePaymentSteps : localPaymentSteps
   const notifications = isSupabaseConfigured ? remoteNotifications : localNotifications
   const notices = isSupabaseConfigured ? remoteNotices : localNotices
@@ -229,7 +239,11 @@ export default function App() {
 
   const refreshMembersRemote = useCallback(async (includeAdminContacts = false) => {
     const next = await loadRemoteResource('members', () => fetchMembersSnapshot(includeAdminContacts))
-    setRemoteMembers(next)
+    setRemoteMembers((current) => {
+      if (includeAdminContacts) return next
+      const phones = new Map(current.map((member) => [member.id, member.phoneNumber]))
+      return next.map((member) => ({ ...member, phoneNumber: phones.get(member.id) ?? member.phoneNumber }))
+    })
     return next
   }, [loadRemoteResource])
 
@@ -285,7 +299,7 @@ export default function App() {
     if (!isSupabaseConfigured || !remoteUser) return
     const tasks: Promise<unknown>[] = [refreshNotificationsRemote(), refreshNoticesRemote(), refreshSelfRemote()]
     if (!remoteUser.isOperationsManager) tasks.push(refreshOrdersRemote(), refreshPaymentStepsRemote(), refreshSettingsRemote())
-    if (pageRef.current === 'members') tasks.push(refreshMembersRemote(remoteUser.role === 'admin'))
+    if (pageRef.current === 'members' || remoteUser.role === 'admin') tasks.push(refreshMembersRemote(remoteUser.role === 'admin'))
     if (pageRef.current === 'settlement') tasks.push(refreshPaymentAccountRemote())
     const results = await Promise.allSettled(tasks)
     const failed = results.find((result) => result.status === 'rejected')
@@ -360,7 +374,7 @@ export default function App() {
 
   useEffect(() => {
     if (!isSupabaseConfigured || !remoteUser) return
-    if (page === 'members' && !loadedResourcesRef.current.has('members')) {
+    if ((page === 'members' || remoteUser.role === 'admin') && !loadedResourcesRef.current.has('members')) {
       void refreshMembersRemote(remoteUser.role === 'admin').catch(() => undefined)
     }
     if (page === 'settlement') {
@@ -403,7 +417,7 @@ export default function App() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settlement_batches' }, scheduleServerViews)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
         schedule('profile', refreshSelfRemote)
-        if (pageRef.current === 'members') schedule('members', () => refreshMembersRemote(remoteUser.role === 'admin'))
+        if (pageRef.current === 'members' || remoteUser.role === 'admin') schedule('members', () => refreshMembersRemote(remoteUser.role === 'admin'))
         scheduleServerViews()
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => schedule('notifications', refreshNotificationsRemote))
@@ -592,6 +606,41 @@ export default function App() {
     const admin = localMembers.find((member) => member.role === 'admin')
     if (admin) setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: new Date().toISOString(), userId: admin.id, role: 'admin', title: '대량 작업 접수', message: `${user.username} 회원이 ${created.length}건의 작업을 접수했습니다.`, read: false }, ...current])
     return created
+  }
+
+  const loadAssignmentMembers = useCallback(async () => {
+    if (isSupabaseConfigured) return refreshMembersRemote(false)
+    return localMembers
+  }, [refreshMembersRemote, localMembers])
+
+  const mergeAssignedOrders = (created: Order[]) => {
+    setRemoteOrders((current) => {
+      const merged = new Map(current.map((order) => [order.dbId ?? order.id, order]))
+      created.forEach((order) => merged.set(order.dbId ?? order.id, order))
+      return [...merged.values()]
+    })
+    setServerDataRevision((current) => current + 1)
+    void refreshOrderEffectsRemote(false).catch(() => undefined)
+  }
+
+  const handleAdminAssign = async (member: User, draft: OrderDraft, requestId: string): Promise<Order> => {
+    if (user?.role !== 'admin' || user.isOperationsManager || !user.active || user.approvalStatus !== 'approved') throw new Error('관리자만 작업을 부여할 수 있습니다.')
+    const errors = assignmentErrors(member, draft)
+    if (errors.length) throw new Error(errors[0])
+    if (!isSupabaseConfigured) throw new Error('관리자 작업 부여는 운영 서버 연결 후 사용할 수 있습니다.')
+    const order = await adminCreateRemoteOrder(member, draft, requestId)
+    mergeAssignedOrders([order])
+    return order
+  }
+
+  const handleAdminBulkAssign = async (rows: AdminAssignmentRow[], requestId: string): Promise<AdminAssignmentResult[]> => {
+    if (user?.role !== 'admin' || user.isOperationsManager || !user.active || user.approvalStatus !== 'approved') throw new Error('관리자만 작업을 부여할 수 있습니다.')
+    if (!rows.length || rows.length > 500) throw new Error('한 번에 1~500건까지 부여할 수 있습니다.')
+    if (!isSupabaseConfigured) throw new Error('관리자 작업 부여는 운영 서버 연결 후 사용할 수 있습니다.')
+    const results = await adminCreateRemoteOrdersBulk(rows, requestId)
+    const created = results.flatMap((result) => result.order ? [result.order] : [])
+    if (created.length) mergeAssignedOrders(created)
+    return results
   }
 
   const handleOrderStatusChange = async (order: Order, status: OrderStatus, reason: string) => {
@@ -1147,7 +1196,7 @@ export default function App() {
     {renderedPage === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
     {renderedPage === 'notifications' && <NotificationsPage user={user} notifications={notifications} hasMore={isSupabaseConfigured && notificationsHasMore} loadingMore={notificationsLoadingMore} onLoadMore={loadMoreNotifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {renderedPage === 'managedOrders' && user.isOperationsManager === true && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
-    {activeProgram && !user.isOperationsManager && <OrdersPage user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
+    {activeProgram && !user.isOperationsManager && <OrdersPage onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {renderedPage === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {renderedPage === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {renderedPage === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}

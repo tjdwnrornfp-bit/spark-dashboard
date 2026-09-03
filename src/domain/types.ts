@@ -58,7 +58,10 @@ export interface Order {
   creatorUsername: string
   sponsorId: string | null
   sponsorUsername: string | null
+  /** Historical snapshot captured when the order was created. */
   creatorGroupName: string
+  /** Current profile group, populated separately for display. Empty is meaningful. */
+  currentCreatorGroupName?: string
   programType: ProgramType
   placeUrl: string
   mid: string

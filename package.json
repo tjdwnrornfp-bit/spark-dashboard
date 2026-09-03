@@ -1,21 +1,23 @@
 {
   "name": "spark-work-intake-dashboard",
   "private": true,
-  "version": "10.5.0",
+  "version": "10.6.0",
   "type": "module",
   "scripts": {
+    "test:assignment": "node tests/admin-assignment.mjs && node tests/client-assignment.mjs",
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && vite build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "preview": "vite --host 0.0.0.0 --preview"
   },
   "dependencies": {
+    "@supabase/supabase-js": "2.102.0",
     "react": "19.0.0",
     "react-dom": "19.0.0",
-    "@supabase/supabase-js": "2.102.0",
     "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "0.5.8",
     "@types/react": "19.0.0",
     "@types/react-dom": "19.0.0",
     "@vitejs/plugin-react": "5.0.0",

@@ -1,3 +1,4 @@
+import { currentGroupNameForOrder } from '../lib/order'
 import type { ReactNode } from 'react'
 import { Icon } from '../components/Icon'
 import { ProgramIcon } from '../components/ProgramIcon'
@@ -10,7 +11,7 @@ import { PROGRAMS, programOrders } from '../lib/program'
 import { ManagerDashboard } from './ManagerDashboard'
 
 function adminRegistrantLabel(order: Order): string {
-  const group = order.creatorGroupName.trim() || '미지정 그룹'
+  const group = currentGroupNameForOrder(order).trim() || '미지정 그룹'
   return order.sponsorId ? `${group} 하위` : group
 }
 

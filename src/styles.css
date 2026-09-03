@@ -3601,3 +3601,31 @@ td small { margin-top: 4px; font-size: 10px; }
   .payment-reversal-summary > .wide { grid-column: auto; }
   .payment-reversal-modal > footer > button { flex: 1; }
 }
+
+/* Administrator order assignment, v10.6 */
+.admin-assignment-modal { width: min(820px, calc(100vw - 32px)); }
+.assignment-bulk-modal { width: min(1120px, calc(100vw - 32px)); }
+.assignment-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.assignment-fields .field { display: flex; flex-direction: column; gap: 7px; font-size: 13px; }
+.assignment-fields input, .assignment-fields select, .assignment-fields textarea { width: 100%; min-height: 40px; border: 1px solid #dfe3e9; border-radius: 7px; padding: 9px 11px; background: white; font: inherit; }
+.assignment-fields textarea { min-height: 70px; resize: vertical; }
+.assignment-member-info { background: #f4f7fc; padding: 12px; border-radius: 8px; line-height: 1.7; margin: 0; }
+.assignment-amounts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; background: #f0f5ff; padding: 16px; margin-top: 18px; border-radius: 10px; }
+.assignment-amounts span { display: flex; flex-direction: column; gap: 6px; font-size: 12px; }
+.assignment-amounts strong { font-size: 16px; color: #244eb3; }
+.assignment-errors { background: #fff3f1; color: #a4342b; padding: 12px; border-radius: 8px; margin-top: 12px; font-size: 13px; line-height: 1.6; }
+.assignment-errors p { margin: 3px 0; }
+.assignment-file-actions, .assignment-counts { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 16px; }
+.assignment-counts { background: #f4f7fc; padding: 14px; border-radius: 8px; font-size: 13px; }
+.assignment-preview-scroll { max-height: 440px; overflow: auto; }
+.assignment-preview-scroll table { min-width: 750px; }
+.assignment-preview-scroll th { position: sticky; top: 0; background: #f7f9fc; }
+.assignment-preview-scroll small { display: block; margin-top: 5px; }
+.assignment-success { color: #18734d; }
+.orders-page-stack .page-header-actions { flex-wrap: wrap; }
+@media (max-width: 720px) {
+  .assignment-amounts { grid-template-columns: repeat(2, 1fr); }
+  .admin-assignment-modal .form-grid { grid-template-columns: 1fr; }
+  .admin-assignment-modal .span-2 { grid-column: auto; }
+  .admin-assignment-modal > footer > button { flex: 1; }
+}
