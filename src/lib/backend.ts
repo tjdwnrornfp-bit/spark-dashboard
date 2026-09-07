@@ -1,3 +1,4 @@
+import type { CorrectionDraft, CorrectionPreview } from './orderCorrection'
 import type { AdminAssignmentResult, AdminAssignmentRow } from './adminAssignment'
 import type {
   AccountDraft,
@@ -1337,4 +1338,22 @@ export async function adminCreateRemoteOrdersBulk(rows: AdminAssignmentRow[], re
   return (data.items ?? []).map((item: Record<string, unknown>) => ({ rowNumber: Number(item.rowNumber),
     status: item.status === 'success' ? 'success' : 'failed', message: item.message ? String(item.message) : undefined,
     order: item.order ? mapOrder(item.order as Record<string, unknown>) : undefined }))
+}
+
+function correctionParams(order: Order, draft: CorrectionDraft, reason: string) {
+  if (!order.dbId) throw new Error('서버 주문 식별자가 없습니다.')
+  return { p_order_id: order.dbId, p_expected_version: order.lockVersion, p_reason: reason.trim(), p_changes: {
+    store_name: draft.storeName.trim(), keyword: draft.keyword.trim(), place_url: draft.placeUrl.trim(),
+    daily_shots: Number(draft.dailyShots), operation_days: Number(draft.operationDays), start_date: draft.startDate, memo: draft.memo.trim(),
+  } }
+}
+export async function previewRemoteOrderCorrection(order: Order, draft: CorrectionDraft, reason: string): Promise<CorrectionPreview> {
+  const { data, error } = await requiredClient().rpc('admin_preview_order_correction_v107', correctionParams(order, draft, reason))
+  if (error) throw error
+  return data as CorrectionPreview
+}
+export async function applyRemoteOrderCorrection(order: Order, draft: CorrectionDraft, reason: string): Promise<Order> {
+  const { data, error } = await requiredClient().rpc('admin_apply_order_correction_v107', correctionParams(order, draft, reason))
+  if (error) throw error
+  return mapOrder(data as Record<string, unknown>)
 }

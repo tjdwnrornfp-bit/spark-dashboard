@@ -11,6 +11,17 @@ const { outputFiles } = await build({
     import { getUserProgramPrice } from './src/lib/program'
     import { createAdminOrdersWorkbook } from './src/lib/adminExcel'
     import { DEMO_USERS } from './src/data/demo'
+    import { intakeWarning } from './src/lib/orderCorrection'
+    import { getDailyProgress } from './src/lib/progress'
+    for (const programType of ['spark','spark_plus']) {
+      assert.ok(intakeWarning({programType,dailyShots:'3',operationDays:'100'}))
+      assert.ok(intakeWarning({programType,dailyShots:'10',operationDays:'30'}))
+      assert.equal(intakeWarning({programType,dailyShots:'100',operationDays:'3'}),null)
+      assert.equal(intakeWarning({programType,dailyShots:'11',operationDays:'100'}),null)
+    }
+    for (const programType of ['spark_s','spark_s_plus']) assert.equal(intakeWarning({programType,dailyShots:'3',operationDays:'100'}),null)
+    const progress = getDailyProgress({id:'example',status:'구동중',dailyShots:100,startDate:'2026-09-06',endDate:'2026-09-08',activatedAt:'2026-09-07T02:51:00.031765Z'},new Date('2026-09-07T04:00:00Z'))
+    assert.equal(progress.targetShots,100);assert.ok(progress.completedShots>=0 && progress.completedShots<=100)
     for (const [label, expected] of [['스파크','spark'],['스파크+','spark_plus'],['스파크 +','spark_plus'],['스파크S','spark_s'],['스파크s','spark_s'],['스파크S+','spark_s_plus'],['스파크s+','spark_s_plus']]) assert.equal(parseAssignmentProgram(label),expected)
     assert.equal(parseAssignmentProgram('알수없음'), undefined)
     const parse = (rows) => { const book = utils.book_new(); utils.book_append_sheet(book,utils.aoa_to_sheet([ADMIN_ASSIGNMENT_HEADERS,...rows]),'관리자 작업부여'); return readAssignmentWorkbook(write(book,{type:'array',bookType:'xlsx'})) }

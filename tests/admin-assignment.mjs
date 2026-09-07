@@ -12,6 +12,7 @@ const migration = readFileSync(new URL('../supabase/migrations/20260903094128_v1
 await db.exec(fixture)
 await db.exec(readFileSync(new URL('./fixtures/v105-quotes.sql', import.meta.url), 'utf8'))
 await db.exec(migration)
+await db.exec(readFileSync(new URL('../supabase/migrations/20260907045616_v10_7_admin_order_correction.sql', import.meta.url), 'utf8'))
 
 const ids = Object.fromEntries(['admin', 'manager', 'dist', 'agency', 'managed', 'pending', 'zero'].map((key) => [key, randomUUID()]))
 for (const [name, id] of Object.entries(ids)) {

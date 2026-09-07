@@ -3633,3 +3633,12 @@ td small { margin-top: 4px; font-size: 10px; }
   .admin-assignment-modal .span-2 { grid-column: auto; }
   .admin-assignment-modal > footer > button { flex: 1; }
 }
+
+.order-correction-modal { width: min(850px, calc(100vw - 24px)); }
+.correction-columns { display: grid; grid-template-columns: 90px minmax(0, 1fr) minmax(0, 1fr); gap: 12px; align-items: center; margin: 12px 0; font-size: 13px; }
+.correction-before { overflow-wrap: anywhere; color: #667085; }
+.correction-columns input { width: 100%; min-width: 0; padding: 9px; border: 1px solid #d0d5dd; border-radius: 6px; }
+.correction-impact { padding: 16px; background: #f0f6ff; border-radius: 8px; margin-top: 16px; }
+.intake-warning { background: #fffaeb; color: #8b5300; padding: 12px; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
+.intake-warnings { max-height: 240px; overflow: auto; }
+@media (max-width: 560px) { .correction-columns { grid-template-columns: 66px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; font-size: 11px; } }

@@ -1,3 +1,4 @@
+import { intakeWarning } from '../lib/orderCorrection'
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/Modal'
 import type { Order, OrderDraft, ProgramType, User } from '../domain/types'
@@ -12,6 +13,7 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
   onAssign: (member: User, draft: OrderDraft, requestId: string) => Promise<Order>
   onClose: () => void
 }) {
+  const [warningAccepted, setWarningAccepted] = useState(false)
   const [members, setMembers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [group, setGroup] = useState('')
@@ -28,11 +30,11 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
   const member = eligible.find((item) => item.id === targetId)
   const price = member ? getUserProgramPrice(member, draft.programType) : 0
   const amount = calculateAmount(Number(draft.dailyShots) || 0, Number(draft.operationDays) || 0, price)
-  const edit = (field: keyof OrderDraft, value: string) => { setDraft((current) => ({ ...current, [field]: value })); setRequestId(crypto.randomUUID()); setErrors([]) }
+  const edit = (field: keyof OrderDraft, value: string) => { setWarningAccepted(false); setDraft((current) => ({ ...current, [field]: value })); setRequestId(crypto.randomUUID()); setErrors([]) }
   const submit = async () => {
     const nextErrors = assignmentErrors(member, draft)
     setErrors(nextErrors)
-    if (!member || nextErrors.length || submitting) return
+    if (!member || nextErrors.length || submitting || (intakeWarning(draft) && !warningAccepted)) return
     setSubmitting(true)
     try {
       const order = await onAssign(member, draft, requestId)
@@ -41,7 +43,7 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
     } catch (error) { setErrors([assignmentErrorMessage(error), '응답을 받지 못했다면 같은 내용으로 다시 확인할 수 있습니다. 이미 생성된 주문은 중복 생성되지 않습니다.']); setUncertain(true) }
     finally { setSubmitting(false) }
   }
-  return <Modal title="작업 부여" description="선택한 회원의 승인 단가로 작업과 정산 내역을 생성합니다." className="admin-assignment-modal" onClose={() => { if (!submitting) onClose() }} footer={<><button className="secondary-button" disabled={submitting} onClick={onClose}>닫기</button><button className="primary-button" disabled={loading || submitting || !member || price <= 0} onClick={() => void submit()}>{submitting ? '부여 중…' : uncertain ? '동일 요청 결과 확인' : '작업 부여'}</button></>}>
+  return <Modal title="작업 부여" description="선택한 회원의 승인 단가로 작업과 정산 내역을 생성합니다." className="admin-assignment-modal" onClose={() => { if (!submitting) onClose() }} footer={<><button className="secondary-button" disabled={submitting} onClick={onClose}>닫기</button><button className="primary-button" disabled={loading || submitting || !member || price <= 0 || Boolean(intakeWarning(draft) && !warningAccepted)} onClick={() => void submit()}>{submitting ? '부여 중…' : uncertain ? '동일 요청 결과 확인' : '작업 부여'}</button></>}>
     {loading && <p role="status">회원 정보를 불러오는 중입니다.</p>}
     <fieldset className="assignment-fields" disabled={loading || submitting || uncertain}>
       <div className="form-grid compact-form">
@@ -60,6 +62,7 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
       </div>
     </fieldset>
     <div className="assignment-amounts"><span>적용단가 <strong>{formatWon(price)}</strong></span><span>공급가 <strong>{formatWon(amount.supplyAmount)}</strong></span><span>부가세 <strong>{formatWon(amount.vatAmount)}</strong></span><span>총액 <strong>{formatWon(amount.totalAmount)}</strong></span></div>
+    {intakeWarning(draft) && <div className="intake-warning" role="alert"><p>{intakeWarning(draft)}</p><label><input type="checkbox" checked={warningAccepted} disabled={submitting} onChange={(e) => setWarningAccepted(e.target.checked)} />확인 후 그대로 접수</label></div>}
     {member && price <= 0 && <p className="form-error">해당 회원의 프로그램 승인 단가가 설정되지 않았습니다.</p>}
     {errors.length > 0 && <div className="assignment-errors" role="alert">{errors.map((error, i) => <p key={i}>{error}</p>)}</div>}
   </Modal>
