@@ -3640,5 +3640,49 @@ td small { margin-top: 4px; font-size: 10px; }
 .correction-columns input { width: 100%; min-width: 0; padding: 9px; border: 1px solid #d0d5dd; border-radius: 6px; }
 .correction-impact { padding: 16px; background: #f0f6ff; border-radius: 8px; margin-top: 16px; }
 .intake-warning { background: #fffaeb; color: #8b5300; padding: 12px; border-radius: 6px; font-size: 13px; overflow-wrap: anywhere; }
+
+/* Inline member editing shares the existing controls on desktop and mobile. */
+.members-table .member-editor-row > td { padding: 0; white-space: normal; }
+.members-page-stack .member-editor { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 16px; text-align: left; white-space: normal; }
+.member-editor-title { justify-content: space-between; }
+.member-editor-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.member-editor-grid > *, .member-editor-grid input, .member-editor-grid select { min-width: 0; }
+.member-editor-grid input, .member-editor-grid select { width: 100%; }
+.members-page-stack .member-editor-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; }
+.member-editor .member-static-info, .member-editor .inline-message { overflow-wrap: anywhere; }
+
+/* Fixed admin columns leave the remaining width for the store name. */
+.orders-page-stack, .orders-panel, .orders-panel > .desktop-table { min-width: 0; max-width: 100%; }
+.orders-table.admin-orders-table { table-layout: fixed; width: 100%; min-width: 1400px; }
+.admin-orders-table:has(.order-col-reason) { min-width: 1530px; }
+.admin-orders-table th, .admin-orders-table td { padding-left: 8px; padding-right: 8px; }
+.order-col-check { width: 32px; }
+.order-col-number { width: 40px; }
+.order-col-date { width: 86px; }
+.order-col-days { width: 56px; }
+.order-col-creator { width: 96px; }
+.order-col-group { width: 116px; }
+.order-col-url { width: 124px; }
+.order-col-keyword { width: 108px; }
+.order-col-quantity { width: 64px; }
+.order-col-status { width: 110px; }
+.order-col-reason { width: 130px; }
+.order-col-actions { width: 104px; }
+.orders-table .order-cell-text { display: block; min-width: 0; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.orders-table .order-store-cell .order-cell-text { max-width: 360px; }
+.admin-orders-table .order-cell-text, .admin-orders-table td a { max-width: 100%; }
+.admin-orders-table .order-status-stack { min-width: 0; }
+.admin-orders-table .transfer-pending-badge { white-space: normal; overflow-wrap: anywhere; }
+.admin-orders-table .status-select { max-width: 100%; padding-left: 6px; padding-right: 20px; }
+.mobile-order-card { min-width: 0; overflow-wrap: anywhere; }
+.mobile-order-card > div:first-child > strong { min-width: 0; }
+
+@media (max-width: 1100px) {
+  .member-editor-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .member-editor-grid { grid-template-columns: minmax(0, 1fr); }
+  .mobile-member-list article > .member-editor { margin-top: 14px; padding: 16px; }
+}
 .intake-warnings { max-height: 240px; overflow: auto; }
 @media (max-width: 560px) { .correction-columns { grid-template-columns: 66px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; font-size: 11px; } }
