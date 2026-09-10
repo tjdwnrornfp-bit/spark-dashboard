@@ -1,5 +1,5 @@
 import type { CorrectionDraft } from './lib/orderCorrection'
-import { previewRemoteOrderCorrection, applyRemoteOrderCorrection } from './lib/backend'
+import { previewRemoteOrderCorrection, applyRemoteOrderCorrection, previewRemoteMemberOrderEdit, applyRemoteMemberOrderEdit } from './lib/backend'
 import { assignmentErrors } from './lib/adminAssignment'
 import type { AdminAssignmentResult, AdminAssignmentRow } from './lib/adminAssignment'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
@@ -565,6 +565,15 @@ export default function App() {
   const handleOrderCorrection = async (order: Order, draft: CorrectionDraft, reason: string): Promise<Order> => {
     if (user?.role !== 'admin' || user.isOperationsManager) throw new Error('관리자만 수정할 수 있습니다.')
     const corrected = await applyRemoteOrderCorrection(order, draft, reason)
+    setRemoteOrders((current) => current.map((item) => item.dbId === corrected.dbId ? corrected : item))
+    setServerDataRevision((current) => current + 1)
+    void refreshOrderEffectsRemote(false).catch(() => undefined)
+    return corrected
+  }
+
+  const handleMemberOrderEdit = async (order: Order, draft: OrderDraft, reason: string): Promise<Order> => {
+    if (!user || user.isOperationsManager || !['agency', 'distributor'].includes(user.role ?? '') || order.createdBy !== user.id) throw new Error('본인 작업만 수정할 수 있습니다.')
+    const corrected = await applyRemoteMemberOrderEdit(order, draft, reason)
     setRemoteOrders((current) => current.map((item) => item.dbId === corrected.dbId ? corrected : item))
     setServerDataRevision((current) => current + 1)
     void refreshOrderEffectsRemote(false).catch(() => undefined)
@@ -1207,7 +1216,7 @@ export default function App() {
     {renderedPage === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
     {renderedPage === 'notifications' && <NotificationsPage user={user} notifications={notifications} hasMore={isSupabaseConfigured && notificationsHasMore} loadingMore={notificationsLoadingMore} onLoadMore={loadMoreNotifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {renderedPage === 'managedOrders' && user.isOperationsManager === true && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
-    {activeProgram && !user.isOperationsManager && <OrdersPage onCorrectionPreview={previewRemoteOrderCorrection} onCorrectionApply={handleOrderCorrection} onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
+    {activeProgram && !user.isOperationsManager && <OrdersPage memberEditRefreshKey={serverDataRevision} onMemberEditPreview={previewRemoteMemberOrderEdit} onMemberEditApply={handleMemberOrderEdit} onCorrectionPreview={previewRemoteOrderCorrection} onCorrectionApply={handleOrderCorrection} onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {renderedPage === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {renderedPage === 'members' && <MembersPage user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {renderedPage === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}

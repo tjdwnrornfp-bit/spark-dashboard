@@ -128,7 +128,8 @@ export type ManagedOrderSettlementStatus = '정산대기' | '부분완료' | '�
 export interface ManagedOrderFilters {
   agencyId: string
   programType: ProgramType | 'all'
-  orderStatus: OrderStatus | 'all'
+  orderStatus: OrderStatus | 'all' | 'in_progress'
+  sort: 'priority' | 'newest' | 'oldest' | 'start_date'
   settlementStatus: ManagedOrderSettlementStatus | 'all'
   query: string
   startDateFrom: string

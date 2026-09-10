@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { isRowInteractive, selectRowRange } from '../lib/rowSelection'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { StatusBadge } from '../components/StatusBadge'
 import type {
@@ -12,9 +13,9 @@ import type {
   User,
 } from '../domain/types'
 import {
-  fetchAllManagedOrdersV102,
+  fetchAllManagedOrdersV108,
   fetchManagedOrderFilterOptionsV102,
-  fetchManagedOrdersV102,
+  fetchManagedOrdersV108,
 } from '../lib/backend'
 import { formatDate } from '../lib/date'
 import { downloadManagedOrdersExcel } from '../lib/managedOrdersExcel'
@@ -27,6 +28,7 @@ const EMPTY_FILTERS: ManagedOrderFilters = {
   agencyId: '',
   programType: 'all',
   orderStatus: 'all',
+  sort: 'priority',
   settlementStatus: 'all',
   query: '',
   startDateFrom: '',
@@ -87,13 +89,19 @@ function filterLocalRows(rows: ManagedOrderRow[], filters: ManagedOrderFilters):
   return rows.filter((row) => {
     if (filters.agencyId && row.registrantId !== filters.agencyId) return false
     if (filters.programType !== 'all' && row.programType !== filters.programType) return false
-    if (filters.orderStatus !== 'all' && row.orderStatus !== filters.orderStatus) return false
+    if (filters.orderStatus === 'in_progress' ? !['입금대기', '입금완료'].includes(row.orderStatus) : filters.orderStatus !== 'all' && row.orderStatus !== filters.orderStatus) return false
     if (filters.settlementStatus !== 'all' && row.settlementStatus !== filters.settlementStatus) return false
     if (filters.startDateFrom && row.startDate < filters.startDateFrom) return false
     if (filters.startDateTo && row.startDate > filters.startDateTo) return false
     if (query && ![row.storeName, row.keyword, row.mid, row.registrantUsername].some((value) => value.toLocaleLowerCase('ko-KR').includes(query))) return false
     return true
-  }).sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+  }).sort((a, b) => {
+    const priority = ['입금대기', '입금완료', '구동중', '정지', '만료']
+    if (filters.sort === 'priority') { const diff = priority.indexOf(a.orderStatus) - priority.indexOf(b.orderStatus); if (diff) return diff }
+    if (filters.sort === 'start_date') { const diff = a.startDate.localeCompare(b.startDate); if (diff) return diff }
+    if (filters.sort === 'oldest') { const diff = a.createdAt.localeCompare(b.createdAt); if (diff) return diff }
+    return b.createdAt.localeCompare(a.createdAt) || b.orderId.localeCompare(a.orderId)
+  })
 }
 
 function localPage(rows: ManagedOrderRow[], filters: ManagedOrderFilters, page: number): ManagedOrdersPageResult {
@@ -123,6 +131,8 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
   refreshKey: number
   initialFilters?: ManagedOrdersPreset | null
 }) {
+  const anchor = useRef<string | null>(null)
+  const loadVersion = useRef(0)
   const [filters, setFilters] = useState<ManagedOrderFilters>(() => ({
     ...EMPTY_FILTERS,
     agencyId: initialFilters?.agencyId ?? '',
@@ -153,20 +163,24 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
   }, [members, refreshKey, serverMode, user.id])
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current
     setLoading(true)
     setError('')
     try {
-      const next = serverMode ? await fetchManagedOrdersV102(filters, page, PAGE_SIZE) : localPage(localRows, filters, page)
+      const next = serverMode ? await fetchManagedOrdersV108(filters, page, PAGE_SIZE) : localPage(localRows, filters, page)
+      if (version !== loadVersion.current) return
+      setSelected((current) => new Map(next.rows.filter((row) => current.has(row.orderId)).map((row) => [row.orderId, row])))
       setResult(next)
       if (next.page !== page) setPage(next.page)
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : '관리 작업을 불러오지 못했습니다.')
+      if (version === loadVersion.current) { setResult(null); setSelected(new Map()); setError(caught instanceof Error ? caught.message : '관리 작업을 불러오지 못했습니다.') }
     } finally {
-      setLoading(false)
+      if (version === loadVersion.current) setLoading(false)
     }
   }, [filters, localRows, page, refreshKey, serverMode])
 
-  useEffect(() => { void load() }, [load])
+  useEffect(() => { anchor.current = null; setSelected(new Map()); setResult(null) }, [filters, page])
+  useEffect(() => { void load(); return () => { loadVersion.current += 1 } }, [load])
 
   const updateFilter = <K extends keyof ManagedOrderFilters>(key: K, value: ManagedOrderFilters[K]) => {
     setFilters((current) => ({ ...current, [key]: value }))
@@ -181,12 +195,15 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
 
   const rows = result?.rows ?? []
   const allCurrentSelected = rows.length > 0 && rows.every((row) => selected.has(row.orderId))
-  const toggleRow = (row: ManagedOrderRow) => setSelected((current) => {
-    const next = new Map(current)
-    if (next.has(row.orderId)) next.delete(row.orderId)
-    else next.set(row.orderId, row)
-    return next
-  })
+  const toggleRow = (row: ManagedOrderRow, shift = false) => {
+    if (loading) return
+    const previousAnchor = anchor.current
+    setSelected((current) => {
+      const ids = selectRowRange(new Set(current.keys()), rows.map((item) => item.orderId), previousAnchor, row.orderId, shift)
+      return new Map(rows.filter((item) => ids.has(item.orderId)).map((item) => [item.orderId, item]))
+    })
+    if (!shift || !previousAnchor || !rows.some((item) => item.orderId === previousAnchor)) anchor.current = row.orderId
+  }
   const toggleCurrentPage = () => setSelected((current) => {
     const next = new Map(current)
     rows.forEach((row) => { if (allCurrentSelected) next.delete(row.orderId); else next.set(row.orderId, row) })
@@ -198,7 +215,7 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
     setExporting(true)
     setError('')
     try {
-      const exportRows = serverMode ? await fetchAllManagedOrdersV102(filters) : filterLocalRows(localRows, filters)
+      const exportRows = serverMode ? await fetchAllManagedOrdersV108(filters) : filterLocalRows(localRows, filters)
       if (exportRows.length === 0) throw new Error('현재 필터 조건에 맞는 작업이 없습니다.')
       downloadManagedOrdersExcel(exportRows, `관리작업_필터전체_${excelDateSuffix()}.xlsx`)
     } catch (caught) {
@@ -210,12 +227,14 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
 
   return (
     <div className="page-stack managed-orders-page-stack">
-      <PageHeader title="관리 작업" subtitle="현재 내 관리 담당으로 배정된 대행사의 과거·현재 작업과 정산 상태를 읽기 전용으로 확인합니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={selected.size === 0 || exporting} onClick={exportSelected}><Icon name="download" />선택 엑셀 ({selected.size.toLocaleString('ko-KR')})</button><button className="primary-button" disabled={!result?.totalCount || exporting} onClick={() => void exportAllFiltered()}><Icon name="download" />{exporting ? '전체 조회 중' : '필터 전체 엑셀'}</button></div>} />
+      <PageHeader title="관리 작업" subtitle="현재 내 관리 담당으로 배정된 대행사의 과거·현재 작업과 정산 상태를 읽기 전용으로 확인합니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={selected.size === 0 || exporting || loading} onClick={exportSelected}><Icon name="download" />선택 엑셀 ({selected.size.toLocaleString('ko-KR')})</button><button className="primary-button" disabled={!result?.totalCount || exporting || loading} onClick={() => void exportAllFiltered()}><Icon name="download" />{exporting ? '전체 조회 중' : '필터 전체 엑셀'}</button></div>} />
       <section className="panel compact-panel managed-orders-filter-panel">
+        <div className="managed-status-chips" aria-label="작업상태 빠른 필터">{(['all', 'in_progress', '입금대기', '입금완료', '구동중', '정지', '만료'] as const).map((status) => <button key={status} className="secondary-button small" aria-pressed={filters.orderStatus === status} onClick={() => updateFilter('orderStatus', status)}>{status === 'all' ? '전체' : status === 'in_progress' ? '진행중(입금대기+입금완료)' : status}</button>)}</div>
         <div className="managed-orders-filter-grid">
+          <label><span>정렬</span><select value={filters.sort} onChange={(event) => updateFilter('sort', event.target.value as ManagedOrderFilters['sort'])}><option value="priority">업무 우선순위</option><option value="newest">최신 접수순</option><option value="oldest">오래된 접수순</option><option value="start_date">시작일 빠른순</option></select></label>
           <label><span>대행사</span><select value={filters.agencyId} onChange={(event) => updateFilter('agencyId', event.target.value)}><option value="">전체</option>{agencyOptions.map((option) => <option key={option.id} value={option.id}>{option.username}</option>)}</select></label>
           <label><span>프로그램</span><select value={filters.programType} onChange={(event) => updateFilter('programType', event.target.value as ManagedOrderFilters['programType'])}><option value="all">전체</option><option value="spark">스파크</option><option value="spark_plus">스파크+</option><option value="spark_s">스파크s</option><option value="spark_s_plus">스파크s+</option></select></label>
-          <label><span>작업상태</span><select value={filters.orderStatus} onChange={(event) => updateFilter('orderStatus', event.target.value as ManagedOrderFilters['orderStatus'])}><option value="all">전체</option>{['입금대기', '입금완료', '구동중', '정지', '만료'].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
+          <label><span>작업상태</span><select value={filters.orderStatus} onChange={(event) => updateFilter('orderStatus', event.target.value as ManagedOrderFilters['orderStatus'])}><option value="all">전체</option><option value="in_progress">진행중(입금대기+입금완료)</option>{['입금대기', '입금완료', '구동중', '정지', '만료'].map((status) => <option key={status} value={status}>{status}</option>)}</select></label>
           <label><span>정산상태</span><select value={filters.settlementStatus} onChange={(event) => updateFilter('settlementStatus', event.target.value as ManagedOrderFilters['settlementStatus'])}><option value="all">전체</option><option value="정산대기">정산대기</option><option value="부분완료">부분완료</option><option value="정산완료">정산완료</option></select></label>
           <label><span>시작일 시작</span><input type="date" value={filters.startDateFrom} max={filters.startDateTo || undefined} onChange={(event) => updateFilter('startDateFrom', event.target.value)} /></label>
           <label><span>시작일 종료</span><input type="date" value={filters.startDateTo} min={filters.startDateFrom || undefined} onChange={(event) => updateFilter('startDateTo', event.target.value)} /></label>
@@ -224,9 +243,10 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
         </div>
       </section>
       {error && <div className="server-error-banner"><span>{error}</span><button onClick={() => void load()}>다시 불러오기</button></div>}
+      <div className="selection-summary"><span>{selected.size}개 선택됨 · Shift 범위 선택은 현재 페이지 내에서 적용됩니다.</span><button className="text-button" disabled={!selected.size} onClick={() => { setSelected(new Map()); anchor.current = null }}>선택 해제</button></div>
       <section className="panel managed-orders-panel">
         <div className="managed-orders-result-head"><div><strong>{(result?.totalCount ?? 0).toLocaleString('ko-KR')}건</strong><span>읽기 전용 · 상태 변경 및 입금확인은 관리자만 가능</span></div>{loading && <span>불러오는 중...</span>}</div>
-        {rows.length === 0 && !loading ? <div className="empty-state fill-empty-state">조건에 맞는 관리 작업이 없습니다.</div> : <div className="desktop-table"><table className="managed-orders-table"><thead><tr><th className="checkbox-cell"><input type="checkbox" aria-label="현재 페이지 전체 선택" checked={allCurrentSelected} onChange={toggleCurrentPage} /></th><th>대행사</th><th>프로그램</th><th>상호명</th><th>대표키워드</th><th>시작일</th><th>종료일</th><th>일일수량</th><th>적용단가</th><th>총금액</th><th>작업상태</th><th>정산상태</th></tr></thead><tbody>{rows.map((row) => <tr key={row.orderId} className={selected.has(row.orderId) ? 'selected-row' : ''}><td className="checkbox-cell"><input type="checkbox" aria-label={`${row.storeName} 선택`} checked={selected.has(row.orderId)} onChange={() => toggleRow(row)} /></td><td><strong>{row.registrantUsername}</strong><small>{row.orderNumber}</small></td><td>{labelForProgram(row.programType).replace(' +', '+')}</td><td><strong>{row.storeName}</strong></td><td>{row.keyword}</td><td>{formatDate(row.startDate)}</td><td>{formatDate(row.endDate)}</td><td>{row.dailyShots.toLocaleString('ko-KR')}{unitLabelForProgram(row.programType)}</td><td>{formatWon(row.pricePerShot)}</td><td><strong>{formatWon(row.totalAmount)}</strong></td><td><StatusBadge status={row.orderStatus} /></td><td><span className={`managed-settlement-badge managed-settlement-${row.settlementStatus}`}>{row.settlementStatus}</span><small>{row.settlementDetail}</small></td></tr>)}</tbody></table></div>}
+        {rows.length === 0 && !loading ? <div className="empty-state fill-empty-state">조건에 맞는 관리 작업이 없습니다.</div> : <div className="desktop-table"><table className="managed-orders-table"><thead><tr><th className="checkbox-cell"><input type="checkbox" aria-label="현재 페이지 전체 선택" checked={allCurrentSelected} disabled={loading} onChange={toggleCurrentPage} /></th><th>대행사</th><th>프로그램</th><th>상호명</th><th>대표키워드</th><th>시작일</th><th>종료일</th><th>일일수량</th><th>적용단가</th><th>총금액</th><th>작업상태</th><th>정산상태</th></tr></thead><tbody>{rows.map((row) => <tr key={row.orderId} onClick={(event) => { if (!isRowInteractive(event.target)) toggleRow(row, event.shiftKey) }} className={selected.has(row.orderId) ? 'selected-row' : ''}><td className="checkbox-cell"><input type="checkbox" aria-label={`${row.storeName} 선택`} checked={selected.has(row.orderId)} disabled={loading} onClick={(event) => toggleRow(row, event.shiftKey)} onChange={() => {}} /></td><td><strong>{row.registrantUsername}</strong><small>{row.orderNumber}</small></td><td>{labelForProgram(row.programType).replace(' +', '+')}</td><td><strong>{row.storeName}</strong></td><td>{row.keyword}</td><td>{formatDate(row.startDate)}</td><td>{formatDate(row.endDate)}</td><td>{row.dailyShots.toLocaleString('ko-KR')}{unitLabelForProgram(row.programType)}</td><td>{formatWon(row.pricePerShot)}</td><td><strong>{formatWon(row.totalAmount)}</strong></td><td><StatusBadge status={row.orderStatus} /></td><td><span className={`managed-settlement-badge managed-settlement-${row.settlementStatus}`}>{row.settlementStatus}</span><small>{row.settlementDetail}</small></td></tr>)}</tbody></table></div>}
         <div className="managed-orders-pagination"><button className="secondary-button small" disabled={loading || (result?.page ?? 1) <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>이전</button><span>{(result?.page ?? 1).toLocaleString('ko-KR')} / {(result?.totalPages ?? 1).toLocaleString('ko-KR')} 페이지</span><button className="secondary-button small" disabled={loading || (result?.page ?? 1) >= (result?.totalPages ?? 1)} onClick={() => setPage((current) => current + 1)}>다음</button></div>
       </section>
     </div>

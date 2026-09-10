@@ -3686,3 +3686,10 @@ td small { margin-top: 4px; font-size: 10px; }
 }
 .intake-warnings { max-height: 240px; overflow: auto; }
 @media (max-width: 560px) { .correction-columns { grid-template-columns: 66px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; font-size: 11px; } }
+
+/* Row selection retains native checkbox keyboard access. */
+.selection-summary, .managed-status-chips { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 10px 0; }
+.managed-status-chips [aria-pressed="true"] { background: #eaf2ff; border-color: #4c85dd; color: #204d93; }
+.admin-orders-table tbody tr, .managed-orders-table tbody tr { cursor: pointer; }
+.orders-table .selected-row > td, .managed-orders-table .selected-row > td, .mobile-order-card.selected-row { background: #eef5ff; }
+.mobile-order-card.selected-row { border-color: #5791dc; }

@@ -1187,7 +1187,7 @@ export async function fetchSettlementBatchItemsV92(batchId: string): Promise<Set
   }) : []
 }
 
-export async function fetchManagedOrdersV102(
+export async function fetchManagedOrdersV108(
   filters: ManagedOrderFilters,
   page = 1,
   pageSize = 50,
@@ -1195,10 +1195,11 @@ export async function fetchManagedOrdersV102(
   const client = requiredClient()
   const safePage = Math.max(1, Math.trunc(page))
   const safePageSize = Math.min(500, Math.max(1, Math.trunc(pageSize)))
-  const { data, error } = await client.rpc('get_manager_managed_orders_v102', {
+  const { data, error } = await client.rpc('get_manager_managed_orders_v108', {
     p_agency_id: filters.agencyId || null,
     p_program_type: filters.programType === 'all' ? null : filters.programType,
-    p_order_status: filters.orderStatus === 'all' ? null : filters.orderStatus,
+    p_order_statuses: filters.orderStatus === 'all' ? null : filters.orderStatus === 'in_progress' ? ['입금대기', '입금완료'] : [filters.orderStatus],
+    p_sort: filters.sort,
     p_settlement_status: filters.settlementStatus === 'all' ? null : filters.settlementStatus,
     p_query: filters.query.trim() || null,
     p_start_date_from: filters.startDateFrom || null,
@@ -1218,12 +1219,12 @@ export async function fetchManagedOrdersV102(
   }
 }
 
-export async function fetchAllManagedOrdersV102(filters: ManagedOrderFilters): Promise<ManagedOrderRow[]> {
+export async function fetchAllManagedOrdersV108(filters: ManagedOrderFilters): Promise<ManagedOrderRow[]> {
   const rows: ManagedOrderRow[] = []
   const pageSize = 500
   let page = 1
   while (true) {
-    const result = await fetchManagedOrdersV102(filters, page, pageSize)
+    const result = await fetchManagedOrdersV108(filters, page, pageSize)
     rows.push(...result.rows)
     if (rows.length >= result.totalCount || result.rows.length === 0) return rows
     page += 1
@@ -1356,4 +1357,26 @@ export async function applyRemoteOrderCorrection(order: Order, draft: Correction
   const { data, error } = await requiredClient().rpc('admin_apply_order_correction_v107', correctionParams(order, draft, reason))
   if (error) throw error
   return mapOrder(data as Record<string, unknown>)
+}
+
+export async function previewRemoteMemberOrderEdit(order: Order, draft: OrderDraft, reason: string): Promise<CorrectionPreview> {
+  const params = correctionParams(order, draft, reason)
+  const { data, error } = await requiredClient().rpc('member_preview_own_order_edit_v108', { ...params, p_changes: { ...params.p_changes, program_type: draft.programType } })
+  if (error) throw error
+  return data as CorrectionPreview
+}
+export async function applyRemoteMemberOrderEdit(order: Order, draft: OrderDraft, reason: string): Promise<Order> {
+  const params = correctionParams(order, draft, reason)
+  const { data, error } = await requiredClient().rpc('member_apply_own_order_edit_v108', { ...params, p_changes: { ...params.p_changes, program_type: draft.programType } })
+  if (error) throw error
+  return mapOrder(data as Record<string, unknown>)
+}
+export async function fetchOwnOrderEditEligibility(ids: string[]): Promise<Map<string, number>> {
+  const result = new Map<string, number>()
+  for (let start = 0; start < ids.length; start += 500) {
+    const { data, error } = await requiredClient().rpc('member_own_order_edit_eligibility_v108', { p_order_ids: ids.slice(start, start + 500) })
+    if (error) throw error
+    for (const row of (data ?? []) as { order_id: string; confirmed_steps: number }[]) result.set(row.order_id, Number(row.confirmed_steps))
+  }
+  return result
 }
