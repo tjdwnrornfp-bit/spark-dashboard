@@ -6,6 +6,7 @@ import type { Order, OrderStatus, ProgramType } from '../domain/types'
 import { ADMIN_EXCEL_PROGRAM_LABELS, downloadAdminOrdersExcel } from '../lib/adminExcel'
 import { todayInSeoul } from '../lib/date'
 import { STATUS_ORDER } from '../lib/order'
+import type { OrderDateRange } from '../lib/orderDateFilter'
 
 const PROGRAM_TYPES: ProgramType[] = ['spark', 'spark_plus', 'spark_s', 'spark_s_plus']
 
@@ -17,7 +18,7 @@ function includesText(value: string, query: string): boolean {
   return value.toLocaleLowerCase('ko-KR').includes(query.toLocaleLowerCase('ko-KR'))
 }
 
-export function AdminOrdersExportModal({ orders, now, onClose }: { orders: Order[]; now: Date; onClose: () => void }) {
+export function AdminOrdersExportModal({ orders, dateRange, now, onClose }: { orders: Order[]; dateRange?: OrderDateRange; now: Date; onClose: () => void }) {
   const [programs, setPrograms] = useState<Set<ProgramType>>(() => new Set(PROGRAM_TYPES))
   const [statuses, setStatuses] = useState<Set<OrderStatus>>(() => new Set(STATUS_ORDER))
   const [groupQuery, setGroupQuery] = useState('')
@@ -99,6 +100,7 @@ export function AdminOrdersExportModal({ orders, now, onClose }: { orders: Order
     </>}
   >
     <div className="integrated-export-form">
+      {dateRange && (dateRange.from || dateRange.to) && <p>접수일 (한국시간): {dateRange.from || '전체'} ~ {dateRange.to || '전체'} · 접수 화면의 날짜 조건이 적용됩니다.</p>}
       <fieldset className="export-filter-group">
         <legend>프로그램</legend>
         <div className="export-checkbox-grid program-options">{PROGRAM_TYPES.map((programType) => <label key={programType}><input type="checkbox" checked={programs.has(programType)} onChange={() => toggleProgram(programType)} /><span>{ADMIN_EXCEL_PROGRAM_LABELS[programType]}</span></label>)}</div>

@@ -1,4 +1,7 @@
 import { MemberOrderEditModal } from './MemberOrderEditModal'
+import { OrderDateFilter } from '../components/OrderDateFilter'
+import { createdAtInDateRange } from '../lib/orderDateFilter'
+import type { OrderDateRange } from '../lib/orderDateFilter'
 import { fetchOwnOrderEditEligibility } from '../lib/backend'
 import { isRowInteractive, selectRowRange } from '../lib/rowSelection'
 import { AdminOrderCorrectionModal } from './AdminOrderCorrectionModal'
@@ -142,6 +145,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   const [filter, setFilter] = useState<'전체' | OrderStatus>('전체')
   const [archiveView, setArchiveView] = useState<'active' | 'archived'>('active')
   const [query, setQuery] = useState('')
+  const [dateRange, setDateRange] = useState<OrderDateRange>({ from: '', to: '' })
   const [sortDirection, setSortDirection] = useState<OrderSortDirection>('desc')
   const [formOpen, setFormOpen] = useState(false)
   const [draft, setDraft] = useState<OrderDraft>(() => emptyDraft(programType, now))
@@ -165,7 +169,12 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   const showProgress = user.role !== 'admin' && programType !== 'spark_s' && programType !== 'spark_s_plus'
   const meta = programMeta(programType)
 
-  const sourceOrders = useMemo(() => orders.filter((order) => (order.programType ?? 'spark') === programType), [orders, programType])
+  const dateFilteredOrders = useMemo(() => {
+    if (user.role !== 'admin') return orders
+    const matchesDate = createdAtInDateRange(dateRange)
+    return orders.filter((order) => matchesDate(order.createdAt))
+  }, [orders, dateRange, user.role])
+  const sourceOrders = useMemo(() => dateFilteredOrders.filter((order) => (order.programType ?? 'spark') === programType), [dateFilteredOrders, programType])
   const selectedOrders = useMemo(() => orders.filter((order) => selectedIds.has(order.id)), [orders, selectedIds])
 
   const visible = useMemo(() => {
@@ -183,7 +192,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
       })
   }, [archiveView, filter, sourceOrders, query, sortDirection, user.id, user.role])
 
-  useEffect(() => { selectionAnchor.current = null }, [filter, archiveView, query, sortDirection, programType])
+  useEffect(() => { selectionAnchor.current = null }, [filter, archiveView, query, sortDirection, programType, dateRange])
   useEffect(() => {
     const ids = new Set(orders.map((order) => order.id))
     setSelectedIds((current) => new Set([...current].filter((id) => ids.has(id))))
@@ -292,7 +301,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   }
 
   const downloadExcel = () => {
-    const target = sourceOrders.filter((order) => selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    const target = orders.filter((order) => (order.programType ?? 'spark') === programType && selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     if (target.length === 0) return window.alert('다운로드할 작업을 선택해 주세요.')
     downloadAdminOrdersExcel({
       orders: target,
@@ -408,6 +417,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
       {eligibilityError && <p className="form-error" role="alert">{eligibilityError}</p>}
       {user.role === 'admin' && <div className="selection-summary"><span>{selectedOrders.length}개 선택됨</span><button className="text-button" disabled={!selectedOrders.length} onClick={() => { setSelectedIds(new Set()); selectionAnchor.current = null }}>선택 해제</button></div>}
       <section className="panel orders-panel fill-panel">
+        {user.role === 'admin' && <OrderDateFilter value={dateRange} onChange={setDateRange} now={now} />}
         <div className="archive-view-tabs"><button className={archiveView === 'active' ? 'active' : ''} onClick={() => { setArchiveView('active'); setSelectedIds(new Set()) }}>운영 작업</button><button className={archiveView === 'archived' ? 'active' : ''} onClick={() => { setArchiveView('archived'); setSelectedIds(new Set()) }}>보관함 <span>{sourceOrders.filter((order) => order.archivedAt && (user.role === 'admin' || order.createdBy === user.id)).length}</span></button></div>
         <div className="order-toolbar"><div className="filter-tabs">{(['전체', ...STATUS_ORDER] as const).map((status) => <button key={status} className={filter === status ? 'active' : ''} onClick={() => setFilter(status)}>{status}<span>{counts[status]}</span></button>)}</div><div className="toolbar-actions"><select className="order-sort-select" aria-label="접수일 정렬" value={sortDirection} onChange={(event) => setSortDirection(event.target.value as OrderSortDirection)}><option value="desc">최신순</option><option value="asc">오래된순</option></select><label className="search-box"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="등록자·그룹명·상호명·추천인·MID 검색" /></label>{user.role === 'admin' && <div className="admin-order-actions"><button className="secondary-button small bulk-transfer-button" onClick={openBulkProgramTransfer}><Icon name="refresh" />프로그램 변경{selectedOrders.length > 0 && <span>{selectedOrders.length.toLocaleString('ko-KR')}</span>}</button></div>}</div></div>
         {visible.length === 0 ? <div className="empty-state fill-empty-state">조건에 맞는 작업이 없습니다.</div> : <>
@@ -425,7 +435,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
         </>}
       </section>
 
-      {integratedExportOpen && user.role === 'admin' && <AdminOrdersExportModal orders={orders} now={now} onClose={() => setIntegratedExportOpen(false)} />}
+      {integratedExportOpen && user.role === 'admin' && <AdminOrdersExportModal orders={dateFilteredOrders} dateRange={dateRange} now={now} onClose={() => setIntegratedExportOpen(false)} />}
       {memberEdit && !user.isOperationsManager && <MemberOrderEditModal order={memberEdit.order} programOnly={memberEdit.programOnly} onPreview={onMemberEditPreview} onApply={onMemberEditApply} onClose={() => setMemberEdit(null)} />}
       {correctionOrder && user.role === 'admin' && !user.isOperationsManager && <AdminOrderCorrectionModal order={correctionOrder} onPreview={onCorrectionPreview} onApply={onCorrectionApply} onClose={() => setCorrectionOrder(null)} />}
       {bulkTransferOrders && user.role === 'admin' && <AdminBulkProgramTransferModal orders={bulkTransferOrders} onClose={() => setBulkTransferOrders(null)} onPreview={onBulkProgramTransferPreview} onTransfer={onBulkProgramTransfer} onFinished={finishBulkProgramTransfer} />}
