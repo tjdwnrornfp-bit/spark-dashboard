@@ -604,3 +604,13 @@ export interface SettlementBatchItemDetail {
   programType: ProgramType
   amount: number
 }
+
+export type AgencyFolderSort = 'in_progress' | 'settlement_waiting' | 'recent' | 'username'
+export interface AgencyFolder {
+ agencyId: string; username: string; totalOrderCount: number; matchedOrderCount: number;
+ inProgressCount: number; runningCount: number; expiredCount: number; stoppedCount: number;
+ settlementWaitingAmount: number; settlementCompletedAmount: number; lastOrderAt: string | null;
+}
+export interface AgencyFoldersResult {
+ page: number; pageSize: number; totalPages: number; agencyCount: number; agencies: AgencyFolder[];
+}

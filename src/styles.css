@@ -3693,3 +3693,36 @@ td small { margin-top: 4px; font-size: 10px; }
 .admin-orders-table tbody tr, .managed-orders-table tbody tr { cursor: pointer; }
 .orders-table .selected-row > td, .managed-orders-table .selected-row > td, .mobile-order-card.selected-row { background: #eef5ff; }
 .mobile-order-card.selected-row { border-color: #5791dc; }
+/* Manager agency folders: compact headers, independent scrollable order tables. */
+.managed-view-toggle { display: flex; gap: 8px; flex-wrap: wrap; }
+.managed-view-toggle [aria-pressed="true"] { background: #e9edff; color: #3730a3; border-color: #818cf8; }
+.agency-folder { overflow: hidden; min-width: 0; }
+.agency-folder-title { margin: 0; font-size: 14px; }
+.agency-folder-toggle { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(260px, 1.5fr) minmax(190px, 1fr); gap: 12px 20px; align-items: center; width: 100%; text-align: left; border: 0; background: transparent; color: inherit; padding: 20px; cursor: pointer; font: inherit; }
+.agency-folder-toggle:hover { background: #f8faff; }
+.agency-folder-toggle:focus-visible { outline: 2px solid #6366f1; outline-offset: -3px; }
+.agency-folder-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.agency-folder-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agency-folder-name small { white-space: nowrap; color: #4338ca; }
+.agency-folder-counts { display: flex; flex-wrap: wrap; gap: 8px 14px; font-size: 13px; font-weight: 400; }
+.agency-folder-money { display: flex; flex-direction: column; gap: 5px; font-size: 13px; font-weight: 400; }
+.agency-folder-match { grid-column: 1 / -1; color: #64748b; font-weight: 400; }
+.agency-folder-body { border-top: 1px solid #e2e8f0; padding: 16px 20px 0; }
+.agency-folder-body[hidden] { display: none; }
+.agency-folder-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
+.agency-folder-actions label { display: flex; align-items: center; gap: 8px; }
+.agency-folder-help { color: #64748b; font-size: 12px; line-height: 1.6; margin: 4px 0 12px; }
+.agency-folder .desktop-table { display: block; overflow-x: auto; }
+.agency-folder .managed-orders-table td strong { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agency-folder .managed-orders-table { min-width: 1180px; }
+@media (max-width: 1000px) {
+  .agency-folder-toggle { grid-template-columns: 1fr 1fr; }
+  .agency-folder-name { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .agency-folder-toggle { padding: 16px; gap: 12px; }
+  .agency-folder-counts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .agency-folder-body { padding: 12px 12px 0; }
+  .agency-folder-actions label { width: 100%; }
+  .agency-folder-actions button { flex: 1 1 140px; }
+}

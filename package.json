@@ -1,7 +1,7 @@
 {
   "name": "spark-work-intake-dashboard",
   "private": true,
-  "version": "10.8.0",
+  "version": "10.9.0",
   "type": "module",
   "scripts": {
     "test:assignment": "node tests/admin-assignment.mjs && node tests/client-assignment.mjs",
@@ -11,7 +11,8 @@
     "preview": "vite --host 0.0.0.0 --preview",
     "test:correction": "node tests/order-correction.mjs",
     "test:member-edit": "node tests/member-order-edit.mjs",
-    "test:selection": "node tests/selection-and-managed-client.mjs"
+    "test:selection": "node tests/selection-and-managed-client.mjs",
+    "test:folders": "node tests/agency-folders.mjs && node tests/agency-folders-client.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.102.0",

@@ -1,7 +1,9 @@
-import { isRowInteractive, selectRowRange } from '../lib/rowSelection'
+import { selectRowRange } from '../lib/rowSelection'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
-import { StatusBadge } from '../components/StatusBadge'
+import { ManagedOrdersTable } from '../components/ManagedOrdersTable'
+import { AgencyFoldersPage } from './AgencyFoldersPage'
+import { EMPTY_FILTERS, localManagedRows, localPage, filterLocalRows, excelDateSuffix } from '../lib/managedOrdersLocal'
 import type {
   ManagedOrderFilterOption,
   ManagedOrderFilters,
@@ -17,112 +19,10 @@ import {
   fetchManagedOrderFilterOptionsV102,
   fetchManagedOrdersV108,
 } from '../lib/backend'
-import { formatDate } from '../lib/date'
 import { downloadManagedOrdersExcel } from '../lib/managedOrdersExcel'
-import { formatWon } from '../lib/money'
-import { labelForProgram, unitLabelForProgram } from '../lib/program'
 import { PageHeader } from './DashboardPage'
 
-const PAGE_SIZE = 50
-const EMPTY_FILTERS: ManagedOrderFilters = {
-  agencyId: '',
-  programType: 'all',
-  orderStatus: 'all',
-  sort: 'priority',
-  settlementStatus: 'all',
-  query: '',
-  startDateFrom: '',
-  startDateTo: '',
-}
-
-function localManagedRows(user: User, members: User[], orders: Order[], paymentSteps: PaymentStep[]): ManagedOrderRow[] {
-  const usernames = new Map(members.filter((member) => member.managerId === user.id).map((member) => [member.id, member.username]))
-  return orders.filter((order) => !order.archivedAt && usernames.has(order.createdBy)).map((order) => {
-    const orderKeys = new Set([order.dbId ?? order.id, order.id])
-    const steps = paymentSteps.filter((step) => orderKeys.has(step.orderDbId))
-    const confirmedSteps = steps.filter((step) => step.confirmedAt).length
-    const specialPending = order.programTransferState === 'payment_pending' || order.settlementReversalPending
-    const settlementStatus = specialPending || steps.length === 0 || confirmedSteps === 0
-      ? '정산대기' as const
-      : confirmedSteps === steps.length
-        ? '정산완료' as const
-        : '부분완료' as const
-    const reason = order.settlementReversalPending
-      ? '입금확인 취소 후 재확인 대기'
-      : order.programTransferState === 'payment_pending'
-        ? '프로그램 변경 추가금 입금대기'
-        : steps.length === 0
-          ? '정산 단계 생성 대기'
-          : `${confirmedSteps}/${steps.length} 완료`
-    return {
-      orderId: order.dbId ?? order.id,
-      orderNumber: order.id,
-      registrantId: order.createdBy,
-      registrantUsername: usernames.get(order.createdBy) ?? order.creatorUsername,
-      programType: order.programType,
-      storeName: order.storeName,
-      keyword: order.keyword,
-      mid: order.mid,
-      placeUrl: order.placeUrl,
-      dailyShots: order.dailyShots,
-      operationDays: order.operationDays,
-      pricePerShot: order.pricePerShot,
-      supplyAmount: order.supplyAmount,
-      vatAmount: order.vatAmount,
-      totalAmount: order.totalAmount,
-      startDate: order.startDate,
-      endDate: order.endDate,
-      orderStatus: order.status,
-      settlementStatus,
-      settlementDetail: `${reason}${specialPending && steps.length > 0 ? ` · ${confirmedSteps}/${steps.length} 완료` : ''}`,
-      confirmedSteps,
-      totalSteps: steps.length,
-      programTransferState: order.programTransferState,
-      settlementReversalPending: order.settlementReversalPending,
-      createdAt: order.createdAt,
-    }
-  })
-}
-
-function filterLocalRows(rows: ManagedOrderRow[], filters: ManagedOrderFilters): ManagedOrderRow[] {
-  const query = filters.query.trim().toLocaleLowerCase('ko-KR')
-  return rows.filter((row) => {
-    if (filters.agencyId && row.registrantId !== filters.agencyId) return false
-    if (filters.programType !== 'all' && row.programType !== filters.programType) return false
-    if (filters.orderStatus === 'in_progress' ? !['입금대기', '입금완료'].includes(row.orderStatus) : filters.orderStatus !== 'all' && row.orderStatus !== filters.orderStatus) return false
-    if (filters.settlementStatus !== 'all' && row.settlementStatus !== filters.settlementStatus) return false
-    if (filters.startDateFrom && row.startDate < filters.startDateFrom) return false
-    if (filters.startDateTo && row.startDate > filters.startDateTo) return false
-    if (query && ![row.storeName, row.keyword, row.mid, row.registrantUsername].some((value) => value.toLocaleLowerCase('ko-KR').includes(query))) return false
-    return true
-  }).sort((a, b) => {
-    const priority = ['입금대기', '입금완료', '구동중', '정지', '만료']
-    if (filters.sort === 'priority') { const diff = priority.indexOf(a.orderStatus) - priority.indexOf(b.orderStatus); if (diff) return diff }
-    if (filters.sort === 'start_date') { const diff = a.startDate.localeCompare(b.startDate); if (diff) return diff }
-    if (filters.sort === 'oldest') { const diff = a.createdAt.localeCompare(b.createdAt); if (diff) return diff }
-    return b.createdAt.localeCompare(a.createdAt) || b.orderId.localeCompare(a.orderId)
-  })
-}
-
-function localPage(rows: ManagedOrderRow[], filters: ManagedOrderFilters, page: number): ManagedOrdersPageResult {
-  const filtered = filterLocalRows(rows, filters)
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
-  const safePage = Math.min(page, totalPages)
-  return {
-    rows: filtered.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE),
-    page: safePage,
-    pageSize: PAGE_SIZE,
-    totalPages,
-    totalCount: filtered.length,
-  }
-}
-
-function excelDateSuffix(): string {
-  const now = new Date()
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
-}
-
-export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverMode, refreshKey, initialFilters }: {
+function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode, refreshKey, initialFilters }: {
   user: User
   members: User[]
   orders: Order[]
@@ -167,7 +67,7 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
     setLoading(true)
     setError('')
     try {
-      const next = serverMode ? await fetchManagedOrdersV108(filters, page, PAGE_SIZE) : localPage(localRows, filters, page)
+      const next = serverMode ? await fetchManagedOrdersV108(filters, page, 50) : localPage(localRows, filters, page)
       if (version !== loadVersion.current) return
       setSelected((current) => new Map(next.rows.filter((row) => current.has(row.orderId)).map((row) => [row.orderId, row])))
       setResult(next)
@@ -246,9 +146,17 @@ export function ManagedOrdersPage({ user, members, orders, paymentSteps, serverM
       <div className="selection-summary"><span>{selected.size}개 선택됨 · Shift 범위 선택은 현재 페이지 내에서 적용됩니다.</span><button className="text-button" disabled={!selected.size} onClick={() => { setSelected(new Map()); anchor.current = null }}>선택 해제</button></div>
       <section className="panel managed-orders-panel">
         <div className="managed-orders-result-head"><div><strong>{(result?.totalCount ?? 0).toLocaleString('ko-KR')}건</strong><span>읽기 전용 · 상태 변경 및 입금확인은 관리자만 가능</span></div>{loading && <span>불러오는 중...</span>}</div>
-        {rows.length === 0 && !loading ? <div className="empty-state fill-empty-state">조건에 맞는 관리 작업이 없습니다.</div> : <div className="desktop-table"><table className="managed-orders-table"><thead><tr><th className="checkbox-cell"><input type="checkbox" aria-label="현재 페이지 전체 선택" checked={allCurrentSelected} disabled={loading} onChange={toggleCurrentPage} /></th><th>대행사</th><th>프로그램</th><th>상호명</th><th>대표키워드</th><th>시작일</th><th>종료일</th><th>일일수량</th><th>적용단가</th><th>총금액</th><th>작업상태</th><th>정산상태</th></tr></thead><tbody>{rows.map((row) => <tr key={row.orderId} onClick={(event) => { if (!isRowInteractive(event.target)) toggleRow(row, event.shiftKey) }} className={selected.has(row.orderId) ? 'selected-row' : ''}><td className="checkbox-cell"><input type="checkbox" aria-label={`${row.storeName} 선택`} checked={selected.has(row.orderId)} disabled={loading} onClick={(event) => toggleRow(row, event.shiftKey)} onChange={() => {}} /></td><td><strong>{row.registrantUsername}</strong><small>{row.orderNumber}</small></td><td>{labelForProgram(row.programType).replace(' +', '+')}</td><td><strong>{row.storeName}</strong></td><td>{row.keyword}</td><td>{formatDate(row.startDate)}</td><td>{formatDate(row.endDate)}</td><td>{row.dailyShots.toLocaleString('ko-KR')}{unitLabelForProgram(row.programType)}</td><td>{formatWon(row.pricePerShot)}</td><td><strong>{formatWon(row.totalAmount)}</strong></td><td><StatusBadge status={row.orderStatus} /></td><td><span className={`managed-settlement-badge managed-settlement-${row.settlementStatus}`}>{row.settlementStatus}</span><small>{row.settlementDetail}</small></td></tr>)}</tbody></table></div>}
+        {rows.length === 0 && !loading ? <div className="empty-state fill-empty-state">조건에 맞는 관리 작업이 없습니다.</div> : <ManagedOrdersTable rows={rows} selected={selected} loading={loading} toggleRow={toggleRow} toggleCurrentPage={toggleCurrentPage} />}
         <div className="managed-orders-pagination"><button className="secondary-button small" disabled={loading || (result?.page ?? 1) <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>이전</button><span>{(result?.page ?? 1).toLocaleString('ko-KR')} / {(result?.totalPages ?? 1).toLocaleString('ko-KR')} 페이지</span><button className="secondary-button small" disabled={loading || (result?.page ?? 1) >= (result?.totalPages ?? 1)} onClick={() => setPage((current) => current + 1)}>다음</button></div>
       </section>
     </div>
   )
+}
+
+export function ManagedOrdersPage(props: Parameters<typeof AllManagedOrdersPage>[0]) {
+ const [viewMode,setViewMode]=useState<'agencyFolders'|'allOrders'>('agencyFolders')
+ return <div className="page-stack"><div className="managed-view-toggle" role="group" aria-label="관리 작업 보기 방식">
+   <button className="secondary-button" aria-pressed={viewMode==='agencyFolders'} onClick={()=>setViewMode('agencyFolders')}>대행사별 보기</button>
+   <button className="secondary-button" aria-pressed={viewMode==='allOrders'} onClick={()=>setViewMode('allOrders')}>전체 작업 보기</button>
+ </div>{viewMode==='agencyFolders'?<AgencyFoldersPage {...props}/>:<AllManagedOrdersPage {...props}/>}</div>
 }

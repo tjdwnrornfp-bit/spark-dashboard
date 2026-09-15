@@ -1187,15 +1187,27 @@ export async function fetchSettlementBatchItemsV92(batchId: string): Promise<Set
   }) : []
 }
 
-export async function fetchManagedOrdersV108(
+export async function fetchManagedOrdersV108(filters: ManagedOrderFilters, page = 1, pageSize = 50): Promise<ManagedOrdersPageResult> {
+  return fetchManagedOrdersPage(filters, page, pageSize, 'get_manager_managed_orders_v108')
+}
+
+export async function fetchAgencyOrdersV109(filters: ManagedOrderFilters, page = 1, pageSize = 50): Promise<ManagedOrdersPageResult> {
+  if (!filters.agencyId) throw new Error('대행사를 선택해 주세요.')
+  const result = await fetchManagedOrdersPage(filters, page, pageSize, 'get_manager_agency_orders_v109')
+  if (page > 1 && result.rows.length === 0) return fetchManagedOrdersPage(filters, 1, pageSize, 'get_manager_agency_orders_v109')
+  return result
+}
+
+async function fetchManagedOrdersPage(
   filters: ManagedOrderFilters,
   page = 1,
   pageSize = 50,
+  rpcName = 'get_manager_managed_orders_v108',
 ): Promise<ManagedOrdersPageResult> {
   const client = requiredClient()
   const safePage = Math.max(1, Math.trunc(page))
   const safePageSize = Math.min(500, Math.max(1, Math.trunc(pageSize)))
-  const { data, error } = await client.rpc('get_manager_managed_orders_v108', {
+  const { data, error } = await client.rpc(rpcName, {
     p_agency_id: filters.agencyId || null,
     p_program_type: filters.programType === 'all' ? null : filters.programType,
     p_order_statuses: filters.orderStatus === 'all' ? null : filters.orderStatus === 'in_progress' ? ['입금대기', '입금완료'] : [filters.orderStatus],
@@ -1379,4 +1391,26 @@ export async function fetchOwnOrderEditEligibility(ids: string[]): Promise<Map<s
     for (const row of (data ?? []) as { order_id: string; confirmed_steps: number }[]) result.set(row.order_id, Number(row.confirmed_steps))
   }
   return result
+}
+
+export async function fetchAgencyFoldersV109(filters: ManagedOrderFilters, page=1, sort: import('../domain/types').AgencyFolderSort='in_progress'): Promise<import('../domain/types').AgencyFoldersResult> {
+ const {data,error}=await requiredClient().rpc('get_manager_agency_folders_v109',{
+   p_page:page,p_page_size:20,p_sort:sort,p_query:filters.query.trim()||null,
+   p_agency_id:filters.agencyId||null,p_program_type:filters.programType==='all'?null:filters.programType,
+   p_order_statuses:filters.orderStatus==='all'?null:filters.orderStatus==='in_progress'?['입금대기','입금완료']:[filters.orderStatus],
+   p_settlement_status:filters.settlementStatus==='all'?null:filters.settlementStatus,
+   p_start_date_from:filters.startDateFrom||null,p_start_date_to:filters.startDateTo||null,
+ })
+ if(error) throw error
+ return data as import('../domain/types').AgencyFoldersResult
+}
+
+export async function fetchAllAgencyOrdersV109(filters: ManagedOrderFilters): Promise<ManagedOrderRow[]> {
+ const rows=new Map<string,ManagedOrderRow>()
+ for(let page=1;;page++) {
+   const result=await fetchAgencyOrdersV109(filters,page,500)
+   if(result.page!==page) throw new Error('작업 목록이 변경되었습니다. 다시 시도해 주세요.')
+   result.rows.forEach(row=>rows.set(row.orderId,row))
+   if(page>=result.totalPages || result.rows.length===0) return [...rows.values()]
+ }
 }
