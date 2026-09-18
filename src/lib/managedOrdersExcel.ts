@@ -23,6 +23,7 @@ const HEADERS = [
   '작업상태',
   '정산상태',
   '총금액',
+  '현재 그룹명',
 ]
 
 function isoDateToExcelSerial(value: string): number | string {
@@ -53,15 +54,16 @@ export function downloadManagedOrdersExcel(rows: ManagedOrderRow[], fileName: st
       row.orderStatus,
       row.settlementStatus,
       row.totalAmount,
+      row.currentGroupName || '미지정 그룹',
     ]),
   ]
   const worksheet = utils.aoa_to_sheet(values)
-  const minWidths = [14, 10, 16, 14, 18, 24, 10, 10, 12, 12, 10, 10, 12, 12]
-  const maxWidths = [24, 14, 32, 22, 30, 48, 14, 14, 14, 14, 12, 12, 16, 16]
+  const minWidths = [14, 10, 16, 14, 18, 24, 10, 10, 12, 12, 10, 10, 12, 12, 18]
+  const maxWidths = [24, 14, 32, 22, 30, 48, 14, 14, 14, 14, 12, 12, 16, 16, 36]
   worksheet['!cols'] = HEADERS.map((_, columnIndex) => ({
     wch: Math.max(minWidths[columnIndex], Math.min(maxWidths[columnIndex], Math.max(...values.map((row) => displayWidth(row[columnIndex]))) + 2)),
   }))
-  worksheet['!autofilter'] = { ref: `A1:N${values.length}` }
+  worksheet['!autofilter'] = { ref: `A1:O${values.length}` }
 
   for (let rowIndex = 2; rowIndex <= values.length; rowIndex += 1) {
     for (const column of ['G', 'H', 'K', 'N']) {

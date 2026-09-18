@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AgencyFolder, AgencyFoldersResult, AgencyFolderSort, ManagedOrderFilters, ManagedOrderRow, ManagedOrdersPageResult, ManagedOrdersPreset, Order, PaymentStep, User } from '../domain/types'
-import { fetchAgencyFoldersV109, fetchAgencyOrdersV109, fetchAllAgencyOrdersV109, fetchAllManagedOrdersV108 } from '../lib/backend'
+import { fetchAgencyFoldersV1010, fetchAgencyOrdersV1010, fetchAllAgencyOrdersV1010, fetchAllManagedOrdersV1010 } from '../lib/backend'
 import { EMPTY_FILTERS, excelDateSuffix, filterLocalRows, localManagedRows, localPage } from '../lib/managedOrdersLocal'
 import { selectRowRange } from '../lib/rowSelection'
 import { downloadManagedOrdersExcel } from '../lib/managedOrdersExcel'
@@ -15,20 +15,20 @@ const statuses = ['all', 'in_progress', '입금대기', '입금완료', '구동�
 const statusLabel = (s: ManagedOrderFilters['orderStatus']) => s === 'all' ? '전체' : s === 'in_progress' ? '진행중(입금대기+입금완료)' : s
 const errorMessage = (e: unknown) => e && typeof e === 'object' && 'message' in e ? String(e.message) : '조회하지 못했습니다. 다시 시도해 주세요.'
 
-function StatusFilters({ value, onChange }: { value: ManagedOrderFilters['orderStatus']; onChange: (s: ManagedOrderFilters['orderStatus']) => void }) {
+export function StatusFilters({ value, onChange }: { value: ManagedOrderFilters['orderStatus']; onChange: (s: ManagedOrderFilters['orderStatus']) => void }) {
   return <div className="managed-status-chips" aria-label="작업상태 빠른 필터">{statuses.map(s => <button key={s} className="secondary-button small" aria-pressed={value === s} onClick={() => onChange(s)}>{statusLabel(s)}</button>)}</div>
 }
-function OrderSort({ value, onChange }: { value: ManagedOrderFilters['sort']; onChange: (s: ManagedOrderFilters['sort']) => void }) {
+export function OrderSort({ value, onChange }: { value: ManagedOrderFilters['sort']; onChange: (s: ManagedOrderFilters['sort']) => void }) {
   return <label>작업 정렬<select value={value} onChange={e => onChange(e.target.value as ManagedOrderFilters['sort'])}><option value="priority">업무 우선순위</option><option value="newest">최신 접수순</option><option value="oldest">오래된 접수순</option><option value="start_date">시작일 빠른순</option></select></label>
 }
-function Pagination({ page, totalPages, loading, onChange, label }: { page: number; totalPages: number; loading: boolean; onChange: (n: number) => void; label: string }) {
+export function Pagination({ page, totalPages, loading, onChange, label }: { page: number; totalPages: number; loading: boolean; onChange: (n: number) => void; label: string }) {
   return <nav className="managed-orders-pagination" aria-label={label}><button className="secondary-button small" disabled={loading || page <= 1} onClick={() => onChange(page - 1)}>이전</button><span>{page} / {totalPages} 페이지</span><button className="secondary-button small" disabled={loading || page >= totalPages} onClick={() => onChange(page + 1)}>다음</button></nav>
 }
 
 // Scoped to one folder: collapsing keeps its page/cache/anchor; each filter change resets the anchor.
-function AgencyFolderPanel({ agency, open, toggle, globalFilters, selected, setSelected, serverMode, localRows }: {
+export function AgencyFolderPanel({ agency, open, toggle, globalFilters, selected, setSelected, serverMode, localRows, downline = false, refreshKey = 0, loadPage = fetchAgencyOrdersV1010, loadAll = fetchAllAgencyOrdersV1010 }: {
   agency: AgencyFolder; open: boolean; toggle: () => void; globalFilters: ManagedOrderFilters;
-  selected: Selection; setSelected: SetSelection; serverMode: boolean; localRows: ManagedOrderRow[];
+  selected: Selection; setSelected: SetSelection; serverMode: boolean; localRows: ManagedOrderRow[]; downline?: boolean; refreshKey?: number; loadPage?: typeof fetchAgencyOrdersV1010; loadAll?: typeof fetchAllAgencyOrdersV1010;
 }) {
   const [status, setStatus] = useState(globalFilters.orderStatus)
   const [sort, setSort] = useState(globalFilters.sort)
@@ -42,15 +42,15 @@ function AgencyFolderPanel({ agency, open, toggle, globalFilters, selected, setS
   const actionVersion = useRef(0)
   const filters = useMemo(() => ({ ...globalFilters, agencyId: agency.agencyId, orderStatus: status, sort }), [globalFilters, agency.agencyId, status, sort])
   const cache = useRef<{ key: string; value: ManagedOrdersPageResult } | null>(null)
-  const requestKey = JSON.stringify([filters, page, retry])
-  useEffect(() => { actionVersion.current += 1; setBusy(false); return () => { actionVersion.current += 1 } }, [filters])
+  const requestKey = JSON.stringify([filters, page, retry, agency.revision, agency.groupName, refreshKey])
+  useEffect(() => { actionVersion.current += 1; setBusy(false); return () => { actionVersion.current += 1 } }, [filters, agency.revision, refreshKey])
   useEffect(() => {
     if (!open) return
     anchor.current = null
     if (cache.current?.key === requestKey) { setResult(cache.current.value); setLoading(false); return }
     let active = true
     setLoading(true); setError(''); setResult(null)
-    void (serverMode ? fetchAgencyOrdersV109(filters, page, 50) : Promise.resolve(localPage(localRows, filters, page))).then(next => {
+    void (serverMode ? loadPage(filters, page, 50) : Promise.resolve(localPage(localRows, filters, page))).then(next => {
       if (!active) return
       cache.current = { key: requestKey, value: next }
       setResult(next)
@@ -58,7 +58,7 @@ function AgencyFolderPanel({ agency, open, toggle, globalFilters, selected, setS
       setSelected(current => { const updated = new Map(current); next.rows.forEach(row => { if (updated.has(row.orderId)) updated.set(row.orderId, row) }); return updated })
     }).catch(e => { if (active) setError(errorMessage(e)) }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
-  }, [open, requestKey, filters, page, serverMode, localRows, setSelected])
+  }, [open, requestKey, filters, page, serverMode, localRows, setSelected, loadPage])
   const rows = result?.rows ?? []
   const toggleRow = (row: ManagedOrderRow, shift = false) => {
     if (loading) return
@@ -81,10 +81,10 @@ function AgencyFolderPanel({ agency, open, toggle, globalFilters, selected, setS
     const version = ++actionVersion.current
     setBusy(true); setError('')
     try {
-      const all = serverMode ? await fetchAllAgencyOrdersV109(filters) : filterLocalRows(localRows, filters)
+      const all = serverMode ? await loadAll(filters) : filterLocalRows(localRows, filters)
       if (version !== actionVersion.current) return
       if (action === 'select') setSelected(current => { const next = new Map(current); all.forEach(r => next.set(r.orderId, r)); return next })
-      else if (all.length) downloadManagedOrdersExcel(all, `관리작업_${agency.username}_${excelDateSuffix()}.xlsx`)
+      else if (all.length) downloadManagedOrdersExcel(all, `${downline ? '하위작업' : '관리작업'}_${agency.username}_${excelDateSuffix()}.xlsx`)
       else setError('현재 조건에 맞는 작업이 없습니다.')
     } catch (e) { if (version === actionVersion.current) setError(errorMessage(e)) }
     finally { if (version === actionVersion.current) setBusy(false) }
@@ -92,9 +92,9 @@ function AgencyFolderPanel({ agency, open, toggle, globalFilters, selected, setS
   const selectedCount = [...selected.values()].filter(r => r.registrantId === agency.agencyId).length
   return <section className="panel agency-folder">
     <h2 className="agency-folder-title"><button className="agency-folder-toggle" aria-expanded={open} aria-controls={`folder-${agency.agencyId}`} onClick={toggle}>
-      <span className="agency-folder-name"><span aria-hidden="true">{open ? '▾' : '▸'}</span><strong title={agency.username}>{agency.username}</strong>{selectedCount > 0 && <small>{selectedCount}개 선택</small>}</span>
+      <span className="agency-folder-name"><span aria-hidden="true">{open ? '▾' : '▸'}</span><strong title={agency.username}>{agency.username}</strong><small title={agency.groupName}>{agency.groupName}</small>{selectedCount > 0 && <small>{selectedCount}개 선택</small>}</span>
       <span className="agency-folder-counts"><span>전체 <b>{agency.totalOrderCount}</b></span><span>진행중 <b>{agency.inProgressCount}</b></span><span>구동중 <b>{agency.runningCount}</b></span><span>만료 <b>{agency.expiredCount}</b></span><span>정지 <b>{agency.stoppedCount}</b></span></span>
-      <span className="agency-folder-money"><span>정산대기 <b>{formatWon(agency.settlementWaitingAmount)}</b></span><span>정산완료 {formatWon(agency.settlementCompletedAmount)}</span></span>
+      <span className="agency-folder-money"><span>{downline ? '내 수령대기' : '정산대기'} <b>{formatWon(agency.settlementWaitingAmount)}</b></span><span>{downline ? '내 수령완료' : '정산완료'} {formatWon(agency.settlementCompletedAmount)}</span></span>
       <small className="agency-folder-match">조건 일치 {agency.matchedOrderCount}건</small>
     </button></h2>
     <div id={`folder-${agency.agencyId}`} hidden={!open} className="agency-folder-body" aria-busy={loading}>
@@ -120,7 +120,7 @@ function demoFolders(user: User, members: User[], rows: ManagedOrderRow[], steps
       if (!direct.length) waiting += r.totalAmount
       direct.forEach(s => { if (s.confirmedAt) completed += s.totalAmount; else waiting += s.totalAmount })
     })
-    return { agencyId: m.id, username: m.username, totalOrderCount: own.length, matchedOrderCount: matching.filter(r => r.registrantId === m.id).length,
+    return { agencyId: m.id, username: m.username, groupName: m.groupName || '미지정 그룹', totalOrderCount: own.length, matchedOrderCount: matching.filter(r => r.registrantId === m.id).length,
       inProgressCount: own.filter(r => ['입금대기', '입금완료'].includes(r.orderStatus)).length, runningCount: own.filter(r => r.orderStatus === '구동중').length,
       expiredCount: own.filter(r => r.orderStatus === '만료').length, stoppedCount: own.filter(r => r.orderStatus === '정지').length,
       settlementWaitingAmount: waiting, settlementCompletedAmount: completed, lastOrderAt: own.map(r => r.createdAt).sort().at(-1) ?? null }
@@ -156,8 +156,8 @@ export function AgencyFoldersPage({ user, members, orders, paymentSteps, serverM
   useEffect(() => { exportVersion.current += 1; setExporting(false); return () => { exportVersion.current += 1 } }, [filters])
   useEffect(() => {
     let active = true
-    setLoading(true); setError(''); setResult(null)
-    void (serverMode ? fetchAgencyFoldersV109(filters, page, sort) : Promise.resolve(demoFolders(user, members, localRows, paymentSteps, filters, page, sort))).then(next => {
+    setLoading(true); setError('')
+    void (serverMode ? fetchAgencyFoldersV1010(filters, page, sort) : Promise.resolve(demoFolders(user, members, localRows, paymentSteps, filters, page, sort))).then(next => {
       if (!active) return
       setResult(next); if (next.page !== page) setPage(next.page)
     }).catch(e => { if (active) setError(errorMessage(e)) }).finally(() => { if (active) setLoading(false) })
@@ -168,14 +168,14 @@ export function AgencyFoldersPage({ user, members, orders, paymentSteps, serverM
     const version = ++exportVersion.current
     setExporting(true); setError('')
     try {
-      const all = serverMode ? await fetchAllManagedOrdersV108(filters) : filterLocalRows(localRows, filters)
+      const all = serverMode ? await fetchAllManagedOrdersV1010(filters) : filterLocalRows(localRows, filters)
       if (version !== exportVersion.current) return
       if (all.length) downloadManagedOrdersExcel(all, `관리작업_필터전체_${excelDateSuffix()}.xlsx`)
       else setError('현재 조건에 맞는 작업이 없습니다.')
     } catch (e) { if (version === exportVersion.current) setError(errorMessage(e)) }
     finally { if (version === exportVersion.current) setExporting(false) }
   }
-  const cacheKey = JSON.stringify([filters, refreshKey, user.id])
+  const cacheKey = JSON.stringify([filters, user.id])
   return <div className="page-stack managed-orders-page-stack">
     <PageHeader title="관리 작업" subtitle="대행사 폴더를 열어 작업을 확인하세요. 중간관리자는 읽기 전용입니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={!selected.size || exporting || loading} onClick={() => downloadManagedOrdersExcel([...selected.values()], `관리작업_선택_${excelDateSuffix()}.xlsx`)}>선택 엑셀 ({selected.size})</button><button className="primary-button" disabled={exporting || loading || !result?.agencyCount} onClick={() => void exportFiltered()}>{exporting ? '전체 조회 중…' : '필터 전체 엑셀'}</button></div>} />
     <section className="panel compact-panel managed-orders-filter-panel">
@@ -187,7 +187,7 @@ export function AgencyFoldersPage({ user, members, orders, paymentSteps, serverM
         <label>정산상태<select value={filters.settlementStatus} onChange={e => update('settlementStatus', e.target.value as ManagedOrderFilters['settlementStatus'])}><option value="all">전체</option><option value="정산대기">정산대기</option><option value="부분완료">부분완료</option><option value="정산완료">정산완료</option></select></label>
         <label>시작일 시작<input type="date" value={filters.startDateFrom} max={filters.startDateTo || undefined} onChange={e => update('startDateFrom', e.target.value)} /></label>
         <label>시작일 종료<input type="date" value={filters.startDateTo} min={filters.startDateFrom || undefined} onChange={e => update('startDateTo', e.target.value)} /></label>
-        <form className="managed-orders-search" onSubmit={e => { e.preventDefault(); update('query', query) }}><label>검색<div><input value={query} onChange={e => setQuery(e.target.value)} placeholder="대행사 아이디, 상호명, 키워드, MID" /><button className="secondary-button small" type="submit">검색</button></div></label></form>
+        <form className="managed-orders-search" onSubmit={e => { e.preventDefault(); update('query', query) }}><label>검색<div><input value={query} onChange={e => setQuery(e.target.value)} placeholder="대행사 아이디, 그룹명, 상호명, 키워드, MID" /><button className="secondary-button small" type="submit">검색</button></div></label></form>
         <button className="text-button" onClick={() => { setFilters(EMPTY_FILTERS); setQuery(''); setPage(1) }}>필터 초기화</button>
       </div>
       {filters.agencyId && <button className="text-button" onClick={() => update('agencyId', '')}>선택 대행사만 표시 중 · 모든 대행사 보기</button>}

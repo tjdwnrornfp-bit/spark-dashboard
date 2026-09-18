@@ -3720,6 +3720,23 @@ td small { margin-top: 4px; font-size: 10px; }
 .agency-folder .desktop-table { display: block; overflow-x: auto; }
 .agency-folder .managed-orders-table td strong { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .agency-folder .managed-orders-table { min-width: 1180px; }
+.downline-group > .agency-folder-body > .agency-folder { margin-top: 12px; }
+.managed-work-mobile { display: none; }
+.managed-work-results .managed-orders-table td { max-width: 240px; overflow: hidden; text-overflow: ellipsis; }
+.managed-work-results .managed-orders-table td strong { display: block; max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.agency-folder-name small[title] { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 680px) {
+  .managed-work-results > .desktop-table { display: none; }
+  .managed-work-mobile { display: grid; gap: 12px; padding: 12px; }
+  .managed-mobile-select, .managed-mobile-title { display: flex; align-items: center; gap: 8px; }
+  .managed-mobile-title strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .managed-work-mobile .mobile-order-card { padding: 14px; cursor: pointer; }
+  .managed-work-mobile .mobile-order-card > p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .managed-work-mobile dl { display: grid; grid-template-columns: 1fr; gap: 8px; }
+  .managed-work-mobile dl > div { display: grid; grid-template-columns: 95px minmax(0,1fr); gap: 8px; }
+  .managed-work-mobile dd { margin: 0; overflow: hidden; text-overflow: ellipsis; }
+  .managed-work-mobile dd small { display: block; margin-top: 4px; }
+}
 @media (max-width: 1000px) {
   .agency-folder-toggle { grid-template-columns: 1fr 1fr; }
   .agency-folder-name { grid-column: 1 / -1; }

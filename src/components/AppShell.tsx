@@ -7,6 +7,7 @@ import { ProgramIcon } from './ProgramIcon'
 const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType?: ProgramType }> = [
   { page: 'dashboard', label: '대시보드', icon: 'dashboard' },
   { page: 'notifications', label: '알림센터', icon: 'bell' },
+  { page: 'downlineOrders', label: '하위 작업', icon: 'orders' },
   { page: 'managedOrders', label: '관리 작업', icon: 'orders' },
   { page: 'sparkOrders', label: '스파크 접수', programType: 'spark' },
   { page: 'sparkPlusOrders', label: '스파크 + 접수', programType: 'spark_plus' },
@@ -39,6 +40,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
   }
 
   const navItems = NAV_ITEMS.filter((item) => {
+    if (item.page === 'downlineOrders') return !user.isOperationsManager && (user.role === 'agency' || user.role === 'distributor')
     if (item.page === 'managedOrders') return user.isOperationsManager === true
     if (user.isOperationsManager) return MANAGER_PAGES.has(item.page)
     if (item.page === 'operations') return user.role === 'admin'

@@ -9,6 +9,7 @@ import type { AccountDraft, AppSettings, BulkProgramTransferPreview, BulkProgram
 import { AuthPage } from './features/AuthPage'
 import { DashboardPage } from './features/DashboardPage'
 import { MembersPage } from './features/MembersPage'
+import { DownlineOrdersPage } from './features/DownlineOrdersPage'
 import { ManagedOrdersPage } from './features/ManagedOrdersPage'
 import { MyInfoPage } from './features/MyInfoPage'
 import { NoticesPage } from './features/NoticesPage'
@@ -1187,11 +1188,13 @@ export default function App() {
 
   const visibleNotifications = notifications.filter((item) => (item.role === 'all' || item.role === user.role) && (item.userId === null || item.userId === user.id))
   const unreadCount = visibleNotifications.filter((item) => !item.read).length
-  const renderedPage: Page = page === 'managedOrders' && user.isOperationsManager !== true ? 'dashboard' : page
+  const canViewDownline = !user.isOperationsManager && (user.role === 'agency' || user.role === 'distributor')
+  const renderedPage: Page = page === 'downlineOrders' && !canViewDownline ? 'dashboard' : page === 'managedOrders' && user.isOperationsManager !== true ? 'dashboard' : page
   const activeProgram = PROGRAM_PAGE_MAP[renderedPage]
   const partialErrorMessages = Object.values(resourceErrors)
 
   const navigate = (next: Page) => {
+    if (next === 'downlineOrders' && !canViewDownline) { setPage('dashboard'); return }
     if (next === 'managedOrders' && user.isOperationsManager !== true) {
       setManagedOrderPreset(null)
       setPage('dashboard')
@@ -1215,6 +1218,7 @@ export default function App() {
     {!remoteError && partialErrorMessages.length > 0 && <p className="inline-message error">일부 데이터가 최신 상태가 아닐 수 있습니다. {partialErrorMessages[0]} <button className="text-button" onClick={() => void refreshRemote()}>다시 불러오기</button></p>}
     {renderedPage === 'dashboard' && <DashboardPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} now={now} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} onNavigate={navigate} onOpenManagedOrders={openManagedOrders} />}
     {renderedPage === 'notifications' && <NotificationsPage user={user} notifications={notifications} hasMore={isSupabaseConfigured && notificationsHasMore} loadingMore={notificationsLoadingMore} onLoadMore={loadMoreNotifications} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
+    {renderedPage === 'downlineOrders' && canViewDownline && <DownlineOrdersPage key={user.id} user={user} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} />}
     {renderedPage === 'managedOrders' && user.isOperationsManager === true && <ManagedOrdersPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
     {activeProgram && !user.isOperationsManager && <OrdersPage memberEditRefreshKey={serverDataRevision} onMemberEditPreview={previewRemoteMemberOrderEdit} onMemberEditApply={handleMemberOrderEdit} onCorrectionPreview={previewRemoteOrderCorrection} onCorrectionApply={handleOrderCorrection} onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {renderedPage === 'settlement' && !user.isOperationsManager && <SettlementPage user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}

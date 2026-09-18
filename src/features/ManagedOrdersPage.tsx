@@ -15,9 +15,9 @@ import type {
   User,
 } from '../domain/types'
 import {
-  fetchAllManagedOrdersV108,
+  fetchAllManagedOrdersV1010,
   fetchManagedOrderFilterOptionsV102,
-  fetchManagedOrdersV108,
+  fetchManagedOrdersV1010,
 } from '../lib/backend'
 import { downloadManagedOrdersExcel } from '../lib/managedOrdersExcel'
 import { PageHeader } from './DashboardPage'
@@ -67,7 +67,7 @@ function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode,
     setLoading(true)
     setError('')
     try {
-      const next = serverMode ? await fetchManagedOrdersV108(filters, page, 50) : localPage(localRows, filters, page)
+      const next = serverMode ? await fetchManagedOrdersV1010(filters, page, 50) : localPage(localRows, filters, page)
       if (version !== loadVersion.current) return
       setSelected((current) => new Map(next.rows.filter((row) => current.has(row.orderId)).map((row) => [row.orderId, row])))
       setResult(next)
@@ -115,7 +115,7 @@ function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode,
     setExporting(true)
     setError('')
     try {
-      const exportRows = serverMode ? await fetchAllManagedOrdersV108(filters) : filterLocalRows(localRows, filters)
+      const exportRows = serverMode ? await fetchAllManagedOrdersV1010(filters) : filterLocalRows(localRows, filters)
       if (exportRows.length === 0) throw new Error('현재 필터 조건에 맞는 작업이 없습니다.')
       downloadManagedOrdersExcel(exportRows, `관리작업_필터전체_${excelDateSuffix()}.xlsx`)
     } catch (caught) {
@@ -138,7 +138,7 @@ function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode,
           <label><span>정산상태</span><select value={filters.settlementStatus} onChange={(event) => updateFilter('settlementStatus', event.target.value as ManagedOrderFilters['settlementStatus'])}><option value="all">전체</option><option value="정산대기">정산대기</option><option value="부분완료">부분완료</option><option value="정산완료">정산완료</option></select></label>
           <label><span>시작일 시작</span><input type="date" value={filters.startDateFrom} max={filters.startDateTo || undefined} onChange={(event) => updateFilter('startDateFrom', event.target.value)} /></label>
           <label><span>시작일 종료</span><input type="date" value={filters.startDateTo} min={filters.startDateFrom || undefined} onChange={(event) => updateFilter('startDateTo', event.target.value)} /></label>
-          <form className="managed-orders-search" onSubmit={submitSearch}><label><span>검색</span><div><input value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} placeholder="상호명, 키워드, MID, 대행사" /><button className="secondary-button small" type="submit"><Icon name="search" />검색</button></div></label></form>
+          <form className="managed-orders-search" onSubmit={submitSearch}><label><span>검색</span><div><input value={queryDraft} onChange={(event) => setQueryDraft(event.target.value)} placeholder="상호명, 키워드, MID, 대행사, 그룹명" /><button className="secondary-button small" type="submit"><Icon name="search" />검색</button></div></label></form>
           <button className="text-button managed-orders-reset" onClick={() => { setFilters(EMPTY_FILTERS); setQueryDraft(''); setPage(1); setSelected(new Map()) }}>필터 초기화</button>
         </div>
       </section>

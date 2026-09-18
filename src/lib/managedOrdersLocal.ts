@@ -34,6 +34,7 @@ export function localManagedRows(user: User, members: User[], orders: Order[], p
       orderId: order.dbId ?? order.id,
       orderNumber: order.id,
       registrantId: order.createdBy,
+      currentGroupName: members.find(m => m.id === order.createdBy)?.groupName || '미지정 그룹',
       registrantUsername: usernames.get(order.createdBy) ?? order.creatorUsername,
       programType: order.programType,
       storeName: order.storeName,
@@ -69,7 +70,7 @@ export function filterLocalRows(rows: ManagedOrderRow[], filters: ManagedOrderFi
     if (filters.settlementStatus !== 'all' && row.settlementStatus !== filters.settlementStatus) return false
     if (filters.startDateFrom && row.startDate < filters.startDateFrom) return false
     if (filters.startDateTo && row.startDate > filters.startDateTo) return false
-    if (query && ![row.storeName, row.keyword, row.mid, row.registrantUsername].some((value) => value.toLocaleLowerCase('ko-KR').includes(query))) return false
+    if (query && ![row.storeName, row.keyword, row.mid, row.registrantUsername, row.currentGroupName ?? ''].some((value) => value.toLocaleLowerCase('ko-KR').includes(query))) return false
     return true
   }).sort((a, b) => {
     const priority = ['입금대기', '입금완료', '구동중', '정지', '만료']

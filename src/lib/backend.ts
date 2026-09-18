@@ -345,6 +345,7 @@ function mapManagedOrder(row: Record<string, unknown>): ManagedOrderRow {
     orderNumber: stringValue(row.order_number),
     registrantId: stringValue(row.registrant_id),
     registrantUsername: stringValue(row.registrant_username),
+    currentGroupName: stringValue(row.current_group_name),
     programType: (row.program_type as ManagedOrderRow['programType']) ?? 'spark',
     storeName: stringValue(row.store_name),
     keyword: stringValue(row.keyword),
@@ -1208,6 +1209,7 @@ async function fetchManagedOrdersPage(
   const safePage = Math.max(1, Math.trunc(page))
   const safePageSize = Math.min(500, Math.max(1, Math.trunc(pageSize)))
   const { data, error } = await client.rpc(rpcName, {
+    ...(rpcName === 'get_downline_orders_v1010' ? { p_group_name: filters.groupName ?? null } : {}),
     p_agency_id: filters.agencyId || null,
     p_program_type: filters.programType === 'all' ? null : filters.programType,
     p_order_statuses: filters.orderStatus === 'all' ? null : filters.orderStatus === 'in_progress' ? ['입금대기', '입금완료'] : [filters.orderStatus],
@@ -1413,4 +1415,66 @@ export async function fetchAllAgencyOrdersV109(filters: ManagedOrderFilters): Pr
    result.rows.forEach(row=>rows.set(row.orderId,row))
    if(page>=result.totalPages || result.rows.length===0) return [...rows.values()]
  }
+}
+
+export async function fetchAgencyFoldersV1010(filters: ManagedOrderFilters, page=1, sort: import('../domain/types').AgencyFolderSort='in_progress'): Promise<import('../domain/types').AgencyFoldersResult> {
+ const {data,error}=await requiredClient().rpc('get_manager_agency_folders_v1010',{
+   p_page:page,p_page_size:20,p_sort:sort,p_query:filters.query.trim()||null,
+   p_agency_id:filters.agencyId||null,p_program_type:filters.programType==='all'?null:filters.programType,
+   p_order_statuses:filters.orderStatus==='all'?null:filters.orderStatus==='in_progress'?['입금대기','입금완료']:[filters.orderStatus],
+   p_settlement_status:filters.settlementStatus==='all'?null:filters.settlementStatus,
+   p_start_date_from:filters.startDateFrom||null,p_start_date_to:filters.startDateTo||null,
+ })
+ if(error) throw error
+ return data as import('../domain/types').AgencyFoldersResult
+}
+
+export async function fetchAllAgencyOrdersV1010(filters: ManagedOrderFilters): Promise<ManagedOrderRow[]> {
+ const rows=new Map<string,ManagedOrderRow>()
+ for(let page=1;;page++) {
+   const result=await fetchAgencyOrdersV1010(filters,page,500)
+   if(result.page!==page) throw new Error('작업 목록이 변경되었습니다. 다시 시도해 주세요.')
+   result.rows.forEach(row=>rows.set(row.orderId,row))
+   if(page>=result.totalPages || result.rows.length===0) return [...rows.values()]
+ }
+}
+
+export async function fetchAgencyOrdersV1010(filters: ManagedOrderFilters, page=1, pageSize=50) {
+ if (!filters.agencyId) throw new Error('대행사를 선택해 주세요.')
+ return fetchWorkPageV1010(filters,page,pageSize,'get_manager_agency_orders_v1010')
+}
+export async function fetchManagedOrdersV1010(filters: ManagedOrderFilters, page=1, pageSize=50) {
+ return fetchWorkPageV1010(filters,page,pageSize,'get_manager_managed_orders_v1010')
+}
+export async function fetchDownlineOrdersV1010(filters: ManagedOrderFilters, page=1, pageSize=50) {
+ return fetchWorkPageV1010(filters,page,pageSize,'get_downline_orders_v1010')
+}
+async function fetchWorkPageV1010(filters: ManagedOrderFilters,page:number,pageSize:number,rpc:string) {
+ const result=await fetchManagedOrdersPage(filters,page,pageSize,rpc)
+ if(page>1 && !result.rows.length) return fetchManagedOrdersPage(filters,1,pageSize,rpc)
+ return result
+}
+export async function fetchAllWorkOrdersV1010(filters: ManagedOrderFilters, downline=false): Promise<ManagedOrderRow[]> {
+ const rows=new Map<string,ManagedOrderRow>()
+ for(let page=1;;page++) {
+   const result=await (downline?fetchDownlineOrdersV1010:fetchManagedOrdersV1010)(filters,page,500)
+   if(result.page!==page) throw new Error('작업 목록이 변경되었습니다. 다시 시도해 주세요.')
+   result.rows.forEach(row=>rows.set(row.orderId,row))
+   if(page>=result.totalPages || !result.rows.length) return [...rows.values()]
+ }
+}
+export const fetchAllDownlineOrdersV1010=(filters: ManagedOrderFilters)=>fetchAllWorkOrdersV1010(filters,true)
+export const fetchAllManagedOrdersV1010=(filters: ManagedOrderFilters)=>fetchAllWorkOrdersV1010(filters)
+
+export async function fetchDownlineOverviewV1010(filters: ManagedOrderFilters,page=1,sort: import('../domain/types').AgencyFolderSort='in_progress',agencies=false): Promise<import('../domain/types').DownlineGroupsResult | import('../domain/types').AgencyFoldersResult> {
+ const {data,error}=await requiredClient().rpc(agencies?'get_downline_agency_overview_v1010':'get_downline_group_overview_v1010',{
+   p_page:page,p_page_size:20,p_sort:sort,p_query:filters.query.trim()||null,
+   p_agency_id:filters.agencyId||null,p_group_name:filters.groupName??null,
+   p_program_type:filters.programType==='all'?null:filters.programType,
+   p_order_statuses:filters.orderStatus==='all'?null:filters.orderStatus==='in_progress'?['입금대기','입금완료']:[filters.orderStatus],
+   p_settlement_status:filters.settlementStatus==='all'?null:filters.settlementStatus,
+   p_start_date_from:filters.startDateFrom||null,p_start_date_to:filters.startDateTo||null,
+ })
+ if(error) throw error
+ return data
 }

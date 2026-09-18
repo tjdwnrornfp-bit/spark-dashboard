@@ -4,7 +4,7 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
 export type ProgramType = 'spark' | 'spark_plus' | 'spark_s' | 'spark_s_plus'
 export type ProgramTransferState = 'none' | 'payment_pending'
-export type Page = 'dashboard' | 'notifications' | 'managedOrders' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
+export type Page = 'dashboard' | 'notifications' | 'managedOrders' | 'downlineOrders' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
 
 export interface ProgramPriceMap {
   spark: number
@@ -126,6 +126,7 @@ export interface PaymentStep {
 export type ManagedOrderSettlementStatus = '정산대기' | '부분완료' | '정산완료'
 
 export interface ManagedOrderFilters {
+  groupName?: string
   agencyId: string
   programType: ProgramType | 'all'
   orderStatus: OrderStatus | 'all' | 'in_progress'
@@ -137,6 +138,7 @@ export interface ManagedOrderFilters {
 }
 
 export interface ManagedOrderRow {
+  currentGroupName?: string
   orderId: string
   orderNumber: string
   registrantId: string
@@ -607,6 +609,7 @@ export interface SettlementBatchItemDetail {
 
 export type AgencyFolderSort = 'in_progress' | 'settlement_waiting' | 'recent' | 'username'
 export interface AgencyFolder {
+ groupName?: string; revision?: string;
  agencyId: string; username: string; totalOrderCount: number; matchedOrderCount: number;
  inProgressCount: number; runningCount: number; expiredCount: number; stoppedCount: number;
  settlementWaitingAmount: number; settlementCompletedAmount: number; lastOrderAt: string | null;
@@ -614,3 +617,6 @@ export interface AgencyFolder {
 export interface AgencyFoldersResult {
  page: number; pageSize: number; totalPages: number; agencyCount: number; agencies: AgencyFolder[];
 }
+
+export interface DownlineGroup extends Omit<AgencyFolder, 'agencyId' | 'username'> { groupName: string; agencyCount: number }
+export interface DownlineGroupsResult { page: number; pageSize: number; totalPages: number; groupCount: number; groups: DownlineGroup[] }
