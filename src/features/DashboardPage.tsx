@@ -1,3 +1,8 @@
+import { useMemo, useState } from 'react'
+import { useRemoteRead } from '../hooks/useRemoteRead'
+import { Pagination } from '../components/Pagination'
+import { fetchDashboardSummary, fetchOrderPage } from '../lib/performance'
+import type { DashboardSummary } from '../lib/performance'
 import { currentGroupNameForOrder } from '../lib/order'
 import type { ReactNode } from 'react'
 import { Icon } from '../components/Icon'
@@ -5,7 +10,7 @@ import { ProgramIcon } from '../components/ProgramIcon'
 import { ProgressGauge } from '../components/ProgressGauge'
 import { StatusBadge } from '../components/StatusBadge'
 import type { ManagedOrdersPreset, Notice, Order, Page, PaymentStep, User } from '../domain/types'
-import { formatDate, daysRemaining } from '../lib/date'
+import { formatDate, daysRemaining, todayInSeoul } from '../lib/date'
 import { formatWon } from '../lib/money'
 import { PROGRAMS, programOrders } from '../lib/program'
 import { ManagerDashboard } from './ManagerDashboard'
@@ -15,7 +20,7 @@ function adminRegistrantLabel(order: Order): string {
   return order.sponsorId ? `${group} 하위` : group
 }
 
-export function DashboardPage({ user, members, orders, paymentSteps, notices, now, serverMode, refreshKey, onNavigate, onOpenManagedOrders }: {
+type DashboardPageProps = {
   user: User
   members: User[]
   orders: Order[]
@@ -26,17 +31,23 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
   refreshKey: number
   onNavigate: (page: Page) => void
   onOpenManagedOrders: (preset?: ManagedOrdersPreset) => void
-}) {
-  if (user.isOperationsManager) {
-    return <ManagerDashboard user={user} members={members} orders={orders} paymentSteps={paymentSteps} notices={notices} serverMode={serverMode} refreshKey={refreshKey} onNavigate={onNavigate} onOpenManagedOrders={onOpenManagedOrders} />
-  }
-
+}
+export function DashboardPage(props: DashboardPageProps) {
+  if (props.user.isOperationsManager) return <ManagerDashboard {...props} />
+  return <StandardDashboard {...props} />
+}
+function StandardDashboard({ user, orders, paymentSteps, notices, now, serverMode, refreshKey, onNavigate }: DashboardPageProps) {
+  const [runningPage, setRunningPage] = useState(1)
+  const today = useMemo(() => todayInSeoul(now), [now])
+  const remote = useRemoteRead(`dashboard:${user.id}:${refreshKey}`, fetchDashboardSummary, serverMode)
+  const remoteRunning = useRemoteRead(`running:${user.id}:${refreshKey}:${runningPage}`, () => fetchOrderPage({ p_status: '구동중', p_page: runningPage }), serverMode && user.role !== 'admin')
+  const local = useMemo(() => {
+    if (serverMode) return null
   const activeOrders = orders.filter((order) => !order.archivedAt)
   const archivedOrderIds = new Set(orders.filter((order) => order.archivedAt).flatMap((order) => [order.dbId ?? order.id, order.id]))
   const activePaymentSteps = paymentSteps.filter((step) => !archivedOrderIds.has(step.orderDbId))
   const visible = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const running = visible.filter((order) => order.status === '구동중')
-  const paidWaitingStart = visible.filter((order) => order.status === '입금완료')
   const runningShots = running.filter((order) => order.programType === 'spark' || order.programType === 'spark_plus').reduce((sum, order) => sum + order.dailyShots, 0)
   const runningCases = running.filter((order) => order.programType === 'spark_s').reduce((sum, order) => sum + order.dailyShots, 0)
   const runningSPlusCases = running.filter((order) => order.programType === 'spark_s_plus').reduce((sum, order) => sum + order.dailyShots, 0)
@@ -55,7 +66,6 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
     .reduce((sum, step) => sum + step.totalAmount, 0)
 
   const recent = [...visible].sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 7)
-  const pinnedNotice = notices.find((notice) => notice.pinned)
   const programSummaries = PROGRAMS.map((program) => {
     const list = programOrders(visible, program.type)
     return {
@@ -68,13 +78,29 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
     }
   })
 
+  const statusCounts = Object.fromEntries(['입금대기','입금완료','구동중','정지','만료'].map((status) => [status, visible.filter((order) => order.status === status).length])) as DashboardSummary['statusCounts']
+  return { totalCount: visible.length, runningCount: running.length, runningShots, runningCases, runningSPlusCases,
+    totalContractShots, totalContractCases, totalContractSPlusCases, statusCounts, programSummaries, recent,
+    settlement: { waitingCount: settlementSteps.filter((step) => !step.confirmedAt).length, confirmedCount: settlementSteps.filter((step) => step.confirmedAt).length,
+      totalCount: settlementSteps.length, waitingAmount, confirmedAmount, totalAmount, receivedAmount,
+      receivedCount: activePaymentSteps.filter((step) => step.payeeId === user.id && step.confirmedAt).length },
+    running }
+  }, [serverMode, orders, paymentSteps, user.id, user.role])
+  const stats = serverMode ? remote.data : local
+  if (!stats) return <div className="panel compact-panel" role={remote.error ? 'alert' : 'status'}><p>{remote.error ?? '대시보드 전체 집계를 조회하고 있습니다.'}</p>{remote.error && <button className="secondary-button" onClick={remote.reload}>다시 조회</button>}</div>
+  const { runningCount, runningShots, runningCases, runningSPlusCases, totalContractShots, totalContractCases, totalContractSPlusCases, recent } = stats
+  const { waitingAmount, confirmedAmount, totalAmount, receivedAmount } = stats.settlement
+  const activeRunningPage = serverMode ? remoteRunning.data?.page ?? runningPage : Math.min(runningPage, Math.max(1, Math.ceil(runningCount / 50)))
+  const running = serverMode ? remoteRunning.data?.rows ?? [] : local!.running.slice((activeRunningPage - 1) * 50, activeRunningPage * 50)
+  const pinnedNotice = notices.find((notice) => notice.pinned)
+  const programSummaries = PROGRAMS.map((program) => ({ ...program, total: 0, waiting: 0, paid: 0, running: 0, expired: 0, ...stats.programSummaries.find((summary) => summary.type === program.type) }))
   if (user.role !== 'admin') {
     return (
       <div className="page-stack dashboard-page-stack">
         <PageHeader title="대시보드" subtitle={`${user.username}님, 안녕하세요. 오늘 현황을 확인하세요.`} />
         {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
         <section className="daily-summary-card">
-          <div><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {running.length}건 · 스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건</p></div>
+          <div><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {runningCount}건 · 스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건</p></div>
           <div className="daily-summary-right"><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}</strong><small>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건 · 스파크S+ 전체 {totalContractSPlusCases.toLocaleString('ko-KR')}건</small></div>
         </section>
         <section className="mini-stat-grid payment-stat-grid agency-payment-grid">
@@ -91,37 +117,32 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
         </section>
         <section className="panel compact-panel dashboard-progress-panel">
           <div className="panel-header"><div><h2>구동중 작업</h2><p>현재 구동중인 작업을 한눈에 확인합니다.</p></div></div>
-          {running.length === 0 ? <EmptyState text="현재 구동중인 작업이 없습니다." /> : (
+          {remoteRunning.error && <p role="alert">{remoteRunning.error} <button className="secondary-button small" onClick={remoteRunning.reload}>다시 조회</button></p>}
+          {remoteRunning.loading ? <p role="status">구동중 작업을 조회하고 있습니다.</p> : running.length === 0 ? <EmptyState text="현재 구동중인 작업이 없습니다." /> : (
             <div className="dashboard-running-list compact-running-grid">
               {running.map((order) => (
                 <article key={order.id} className="dashboard-running-item compact-running-card">
                   <div className="compact-running-title"><strong>[{PROGRAMS.find((program) => program.type === order.programType)?.label}] {order.storeName}</strong><span>{order.keyword}</span></div>
-                  {order.programType === 'spark_s' || order.programType === 'spark_s_plus' ? <span className="spark-s-running-status">구동중 · {order.dailyShots.toLocaleString('ko-KR')}건</span> : <ProgressGauge order={order} now={now} compact />}
+                  {order.programType === 'spark_s' || order.programType === 'spark_s_plus' ? <span className="spark-s-running-status">구동중 · {order.dailyShots.toLocaleString('ko-KR')}건</span> : <ProgressGauge order={order} compact />}
                 </article>
               ))}
             </div>
           )}
+          <Pagination page={activeRunningPage} total={serverMode ? remoteRunning.data?.totalCount ?? runningCount : runningCount} disabled={remoteRunning.loading} onChange={setRunningPage} />
         </section>
       </div>
     )
   }
 
-  const waiting = visible.filter((order) => order.status === '입금대기')
-  const statusCounts = [
-    { label: '입금대기', value: waiting.length },
-    { label: '입금완료', value: paidWaitingStart.length },
-    { label: '구동중', value: running.length },
-    { label: '정지', value: visible.filter((order) => order.status === '정지').length },
-    { label: '만료', value: visible.filter((order) => order.status === '만료').length },
-  ]
-  const total = Math.max(1, visible.length)
+  const statusCounts = Object.entries(stats.statusCounts).map(([label, value]) => ({ label, value }))
+  const total = Math.max(1, stats.totalCount)
 
   return (
     <div className="page-stack dashboard-page-stack">
       <PageHeader title="대시보드" subtitle="전체 작업 수량과 관리자 정산 현황을 확인합니다." />
       <section className="admin-kpi-card">
         <div><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}<small>타</small></strong><p>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건 · 스파크S+ 전체 {totalContractSPlusCases.toLocaleString('ko-KR')}건</p></div>
-        <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}</strong><small>스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건 · 구동중 {running.length}건</small></div>
+        <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}</strong><small>스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건 · 구동중 {runningCount}건</small></div>
       </section>
       <section className="mini-stat-grid payment-stat-grid">
         <MiniStat label="입금 대기 금액" value={formatWon(waitingAmount)} />
@@ -141,7 +162,7 @@ export function DashboardPage({ user, members, orders, paymentSteps, notices, no
         </section>
         <section className="panel compact-panel recent-orders-panel">
           <div className="panel-header"><div><h2>최근 접수</h2><p>최근 등록된 작업입니다.</p></div><button className="text-button" onClick={() => onNavigate('sparkOrders')}>접수 보기 <Icon name="chevron" /></button></div>
-          {recent.length === 0 ? <EmptyState text="접수된 작업이 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>프로그램</th><th>등록 그룹</th><th>상호명</th><th>시작일</th><th>남은기간</th><th>상태</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id}><td>{PROGRAMS.find((program) => program.type === order.programType)?.label}</td><td>{adminRegistrantLabel(order)}</td><td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td>{formatDate(order.startDate)}</td><td>{String(daysRemaining(order.startDate, order.endDate, now))}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}
+          {recent.length === 0 ? <EmptyState text="접수된 작업이 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>프로그램</th><th>등록 그룹</th><th>상호명</th><th>시작일</th><th>남은기간</th><th>상태</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id}><td>{PROGRAMS.find((program) => program.type === order.programType)?.label}</td><td>{adminRegistrantLabel(order)}</td><td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td>{formatDate(order.startDate)}</td><td>{String(daysRemaining(order.startDate, order.endDate, today))}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}
         </section>
       </section>
     </div>

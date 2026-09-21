@@ -1,7 +1,7 @@
 {
   "name": "spark-work-intake-dashboard",
   "private": true,
-  "version": "10.10.0",
+  "version": "10.11.0",
   "type": "module",
   "scripts": {
     "test:admin-date": "node tests/admin-order-date.mjs",
@@ -14,7 +14,10 @@
     "test:member-edit": "node tests/member-order-edit.mjs",
     "test:selection": "node tests/selection-and-managed-client.mjs",
     "test:folders": "node tests/agency-folders.mjs && node tests/agency-folders-client.mjs",
-    "test:downline": "node tests/downline-work.mjs && node tests/downline-work-client.mjs"
+    "test:downline": "node tests/downline-work.mjs && node tests/downline-work-client.mjs",
+    "test:performance": "node tests/performance-reads.mjs && node tests/performance-client.mjs",
+    "test": "node tests/run-all.mjs",
+    "verify": "npm test && npm run build"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.102.0",

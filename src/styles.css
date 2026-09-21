@@ -3748,3 +3748,8 @@ td small { margin-top: 4px; font-size: 10px; }
   .agency-folder-actions label { width: 100%; }
   .agency-folder-actions button { flex: 1 1 140px; }
 }
+
+/* Paged lists keep both desktop and mobile controls usable. */
+.performance-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; padding:12px; }
+.performance-pagination span { margin-right:auto; font-size:13px; }
+.performance-read-error { padding:16px; color:var(--danger, #b42318); }

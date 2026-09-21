@@ -431,13 +431,18 @@ export async function fetchOrdersSnapshot(): Promise<Order[]> {
 
 export async function fetchPaymentStepsSnapshot(): Promise<PaymentStep[]> {
   const client = requiredClient()
-  const activeStepsResult = await client.rpc('get_my_active_payment_steps_v91')
-  let stepsResult = activeStepsResult
-  if (activeStepsResult.error && ['PGRST202', '42883'].includes(String(activeStepsResult.error.code ?? ''))) {
-    stepsResult = await client.from('payment_steps').select(PAYMENT_STEP_COLUMNS).order('created_at', { ascending: true }).order('step_order', { ascending: true })
+  const rows: PaymentStep[] = []
+  const pageSize = 1000
+  for (let offset = 0; ; offset += pageSize) {
+    const result = await client.rpc('get_my_active_payment_steps_v91')
+      .order('created_at', { ascending: true }).order('id', { ascending: true })
+      .range(offset, offset + pageSize - 1)
+    if (result.error) throw result.error // Never silently fall back to unfiltered/archived rows.
+    const page = result.data ?? []
+    rows.push(...page.map((row: Record<string, unknown>) => mapPaymentStep(row)))
+    if (page.length < pageSize) break
   }
-  if (stepsResult.error) throw stepsResult.error
-  return (stepsResult.data ?? []).map((row: Record<string, unknown>) => mapPaymentStep(row))
+  return rows
 }
 
 export async function fetchNotificationsSnapshot({ offset = 0, limit = NOTIFICATION_PAGE_SIZE }: { offset?: number; limit?: number } = {}): Promise<{ items: NotificationItem[]; hasMore: boolean }> {

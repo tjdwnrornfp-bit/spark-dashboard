@@ -1,5 +1,7 @@
+import { PagedOrderPaymentStates, PagedOutgoingSettlements } from './PagedSettlementDetails'
+import { singleFlight } from '../lib/singleFlight'
 import { currentGroupNameForOrder } from '../lib/order'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
 import { StatusBadge } from '../components/StatusBadge'
@@ -176,7 +178,7 @@ export function SettlementPage({
   const [batchHistory, setBatchHistory] = useState<SettlementBatchHistoryItem[]>([])
   const [batchDetail, setBatchDetail] = useState<{ batch: SettlementBatchHistoryItem; items: SettlementBatchItemDetail[] } | null>(null)
   const [batchDetailLoadingId, setBatchDetailLoadingId] = useState<string | null>(null)
-  const [settlementLoading, setSettlementLoading] = useState(false)
+  const [settlementReadLoading, setSettlementLoading] = useState(false)
   const [settlementError, setSettlementError] = useState('')
   const [companyOverview, setCompanyOverview] = useState<AdminCompanyOverviewResult | null>(null)
   const [companyOverviewPage, setCompanyOverviewPage] = useState(1)
@@ -194,9 +196,17 @@ export function SettlementPage({
   const [batchConfirming, setBatchConfirming] = useState(false)
   const [batchResult, setBatchResult] = useState<SettlementBatchResult | null>(null)
 
-  const activeOrders = useMemo(() => orders.filter((order) => !order.archivedAt), [orders])
-  const archivedOrderIds = useMemo(() => new Set(orders.filter((order) => order.archivedAt).flatMap((order) => [order.dbId ?? order.id, order.id])), [orders])
-  const activePaymentSteps = useMemo(() => paymentSteps.filter((step) => !archivedOrderIds.has(step.orderDbId)), [archivedOrderIds, paymentSteps])
+  const pageSequence = useRef(0)
+  const metaSequence = useRef(0)
+  const companySequence = useRef(0)
+  const pageReadKey = JSON.stringify([user.id, refreshKey, filters, page, queryInput])
+  const currentPageReadKey = useRef(pageReadKey)
+  currentPageReadKey.current = pageReadKey
+  const [appliedPageKey, setAppliedPageKey] = useState('')
+  const settlementLoading = settlementReadLoading || (isSupabaseConfigured && appliedPageKey !== pageReadKey)
+  const activeOrders = useMemo(() => isSupabaseConfigured ? [] : orders.filter((order) => !order.archivedAt), [orders])
+  const archivedOrderIds = useMemo(() => new Set((isSupabaseConfigured ? [] : orders).filter((order) => order.archivedAt).flatMap((order) => [order.dbId ?? order.id, order.id])), [orders])
+  const activePaymentSteps = useMemo(() => isSupabaseConfigured ? [] : paymentSteps.filter((step) => !archivedOrderIds.has(step.orderDbId)), [archivedOrderIds, paymentSteps])
   const visibleOrders = user.role === 'admin' ? activeOrders : activeOrders.filter((order) => order.createdBy === user.id)
   const incomingSteps = useMemo(
     () => activePaymentSteps.filter((step) => step.payeeId === user.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
@@ -210,6 +220,7 @@ export function SettlementPage({
   const filteredLocalRows = useMemo(() => localFilterRows(localIncomingRows, filters), [filters, localIncomingRows])
 
   const localPageResult = useMemo<SettlementPageResult>(() => {
+    if (isSupabaseConfigured) return { rows: [], page: 1, pageSize: 50, totalPages: 1, totalCount: 0, totalAmount: 0, readyCount: 0, readyAmount: 0 }
     const pageSize = 50
     const totalPages = Math.max(1, Math.ceil(filteredLocalRows.length / pageSize))
     const safePage = Math.min(page, totalPages)
@@ -228,6 +239,7 @@ export function SettlementPage({
   }, [filteredLocalRows, page])
 
   const localSummary = useMemo<SettlementSummary>(() => {
+    if (isSupabaseConfigured) return { waitingCount: 0, waitingAmount: 0, confirmedCount: 0, confirmedAmount: 0, totalCount: 0, totalAmount: 0, receivedCount: 0, receivedAmount: 0 }
     const settlementSteps = user.role === 'admin' ? incomingSteps : outgoingSteps
     const waiting = settlementSteps.filter((step) => !step.confirmedAt)
     const confirmed = settlementSteps.filter((step) => step.confirmedAt)
@@ -245,7 +257,7 @@ export function SettlementPage({
   }, [incomingSteps, outgoingSteps, user.role])
 
   const localCompanyOverview = useMemo<AdminCompanyOverviewResult>(() => {
-    if (user.role !== 'admin') return {
+    if (isSupabaseConfigured || user.role !== 'admin') return {
       page: 1, pageSize: 12, totalPages: 1, companyCount: 0, totalOrders: 0,
       waitingAmount: 0, confirmedAmount: 0, expiredCount: 0, dailyRunningShots: 0,
       sparkSRunningUnits: 0, sparkSPlusRunningUnits: 0, companies: [],
@@ -340,55 +352,68 @@ export function SettlementPage({
 
   const loadSettlementPage = useCallback(async () => {
     if (!isSupabaseConfigured) return
+    const sequence = ++pageSequence.current
+    if (queryInput !== filters.query) return
     setSettlementLoading(true)
+    setPageResult(null)
     setSettlementError('')
     try {
-      const nextPage = await fetchSettlementPageV92(filters, page, 50)
+      const nextPage = await singleFlight(`settlement-page:${pageReadKey}`, () => fetchSettlementPageV92(filters, page, 50))
+      if (sequence !== pageSequence.current || pageReadKey !== currentPageReadKey.current) return
+      setAppliedPageKey(pageReadKey)
       setPageResult(nextPage)
       if (nextPage.page > nextPage.totalPages) setPage(nextPage.totalPages)
       else if (nextPage.page !== page) setPage(nextPage.page)
     } catch (error) {
+      if (sequence !== pageSequence.current || pageReadKey !== currentPageReadKey.current) return
+      setAppliedPageKey(pageReadKey)
       setSettlementError(getErrorMessage(error))
     } finally {
-      setSettlementLoading(false)
+      if (sequence === pageSequence.current && pageReadKey === currentPageReadKey.current) setSettlementLoading(false)
     }
-  }, [filters, page, refreshKey])
+  }, [filters, page, pageReadKey, queryInput])
 
   const loadSettlementMeta = useCallback(async () => {
     if (!isSupabaseConfigured) return
+    const sequence = ++metaSequence.current
     try {
-      const [nextSummary, nextOptions, nextHistory] = await Promise.all([
+      const [nextSummary, nextOptions, nextHistory] = await singleFlight(`settlement-meta:${user.id}:${refreshKey}`, () => Promise.all([
         fetchSettlementSummaryV92(),
         fetchSettlementFilterOptionsV92(),
         fetchSettlementBatchHistoryV92(50),
-      ])
+      ]))
+      if (sequence !== metaSequence.current) return
       setSummary(nextSummary)
       setFilterOptions(nextOptions)
       setBatchHistory(nextHistory)
     } catch (error) {
-      setSettlementError(getErrorMessage(error))
+      if (sequence === metaSequence.current) setSettlementError(getErrorMessage(error))
     }
-  }, [refreshKey])
+  }, [refreshKey, user.id])
 
   const loadCompanyOverview = useCallback(async () => {
     if (!isSupabaseConfigured || user.role !== 'admin') return
+    const sequence = ++companySequence.current
+    if (companyOverviewQueryInput !== companyOverviewQuery) return
     setCompanyOverviewLoading(true)
+    setCompanyOverview(null)
     try {
-      const nextOverview = await fetchAdminCompanyOverviewV96({
+      const nextOverview = await singleFlight(`companies:${user.id}:${refreshKey}:${companyOverviewPage}:${companyOverviewQuery}:${companyOverviewSort}`, () => fetchAdminCompanyOverviewV96({
         page: companyOverviewPage,
         pageSize: 12,
         query: companyOverviewQuery,
         sort: companyOverviewSort,
-      })
+      }))
+      if (sequence !== companySequence.current) return
       setCompanyOverview(nextOverview)
       if (nextOverview.page > nextOverview.totalPages) setCompanyOverviewPage(nextOverview.totalPages)
       else if (nextOverview.page !== companyOverviewPage) setCompanyOverviewPage(nextOverview.page)
     } catch (error) {
-      setSettlementError(getErrorMessage(error))
+      if (sequence === companySequence.current) setSettlementError(getErrorMessage(error))
     } finally {
-      setCompanyOverviewLoading(false)
+      if (sequence === companySequence.current) setCompanyOverviewLoading(false)
     }
-  }, [companyOverviewPage, companyOverviewQuery, companyOverviewSort, refreshKey, user.role])
+  }, [companyOverviewPage, companyOverviewQuery, companyOverviewSort, companyOverviewQueryInput, refreshKey, user.id, user.role])
 
   const refreshSettlementData = useCallback(async () => {
     await Promise.all([loadSettlementPage(), loadSettlementMeta(), loadCompanyOverview()])
@@ -412,15 +437,18 @@ export function SettlementPage({
 
   useEffect(() => {
     void loadSettlementPage()
+    return () => { pageSequence.current += 1 }
   }, [loadSettlementPage])
 
   useEffect(() => {
     void loadSettlementMeta()
+    return () => { metaSequence.current += 1 }
   }, [loadSettlementMeta, user.id])
 
 
   useEffect(() => {
     void loadCompanyOverview()
+    return () => { companySequence.current += 1 }
   }, [loadCompanyOverview, user.id])
 
   useEffect(() => {
@@ -439,7 +467,7 @@ export function SettlementPage({
 
   const activePage = pageResult ?? localPageResult
   const activeSummary = summary ?? localSummary
-  const currentRows = activePage.rows
+  const currentRows = isSupabaseConfigured && appliedPageKey !== pageReadKey ? [] : activePage.rows
   const selectableRows = currentRows.filter((row) => !row.confirmedAt && row.canConfirm)
   const adminCompanyGroups = useMemo(() => {
     if (user.role !== 'admin') return []
@@ -522,6 +550,7 @@ export function SettlementPage({
   }
 
   const toggleRow = (row: SettlementRow) => {
+    if (settlementLoading) return
     if (row.confirmedAt || !row.canConfirm) return
     if (selectAllFiltered) {
       setExcludedRows((current) => {
@@ -929,7 +958,8 @@ export function SettlementPage({
           </div>
         </section>
 
-        {user.role !== 'admin' && <section className="panel compact-panel fill-panel settlement-outgoing-panel">
+        {user.role !== 'admin' && isSupabaseConfigured && <PagedOutgoingSettlements userId={user.id} revision={refreshKey} />}
+        {user.role !== 'admin' && !isSupabaseConfigured && <section className="panel compact-panel fill-panel settlement-outgoing-panel">
           <div className="panel-header"><div><h2>작업 정산 내역</h2><p>내 작업과 하위 작업을 합산한 정산 내역입니다.</p></div></div>
           {outgoingSteps.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-outgoing-table"><thead><tr><th>작업</th><th>단가</th><th>정산액</th><th>상태</th></tr></thead><tbody>{outgoingSteps.map((step) => <tr key={step.id}><td><strong>{step.storeName}</strong></td><td>{formatWon(step.unitPrice)} / {paymentStepUnit(step, orders)}</td><td><strong>{formatWon(step.totalAmount)}</strong></td><td>{step.confirmedAt ? <span className="payment-confirmed-text">입금확인 완료</span> : <span className="payment-waiting-text">확인 대기</span>}</td></tr>)}</tbody></table></div>}
         </section>}
@@ -1007,7 +1037,8 @@ export function SettlementPage({
         <div className="desktop-table settlement-table-wrap"><table className="simple-table settlement-table settlement-batch-history-table"><thead><tr><th>묶음번호</th><th>입금자</th><th>건수</th><th>확인금액</th><th>확인시각</th><th>상세</th></tr></thead><tbody>{batchHistory.map((batch) => <tr key={batch.id}><td><strong>{batch.batchNumber}</strong>{batch.memo && <small>{batch.memo}</small>}</td><td>{batch.payerUsername}</td><td>{batch.itemCount.toLocaleString('ko-KR')}건</td><td><strong>{formatWon(batch.actualAmount)}</strong></td><td>{formatDateTime(batch.confirmedAt)}</td><td><button className="secondary-button small" disabled={batchDetailLoadingId === batch.id} onClick={() => void openBatchDetail(batch)}>{batchDetailLoadingId === batch.id ? '조회 중' : '포함 작업'}</button></td></tr>)}</tbody></table></div>
       </section>)}
 
-      <section className="panel compact-panel fill-panel settlement-orders-panel"><div className="panel-header"><div><h2>{user.role === 'admin' ? '전체 작업 결제 상태' : '내 작업 결제 상태'}</h2><p>필요한 입금 확인이 모두 끝나면 작업이 입금완료로 변경됩니다.</p></div></div>{visibleOrders.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table"><table className="simple-table settlement-table settlement-orders-table"><thead><tr>{user.role === 'admin' && <th>등록 그룹</th>}<th>상호명</th><th>{user.role === 'admin' ? '관리자 정산액' : '접수금액'}</th><th>시작일</th><th>상태</th></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id}>{user.role === 'admin' && <td>{currentGroupNameForOrder(order) || '미지정 그룹'}</td>}<td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td><strong>{formatWon(orderSettlementAmount(order))}</strong></td><td>{formatDate(order.startDate)}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}</section>
+      {isSupabaseConfigured && <PagedOrderPaymentStates user={user} revision={refreshKey} />}
+      {!isSupabaseConfigured && <section className="panel compact-panel fill-panel settlement-orders-panel"><div className="panel-header"><div><h2>{user.role === 'admin' ? '전체 작업 결제 상태' : '내 작업 결제 상태'}</h2><p>필요한 입금 확인이 모두 끝나면 작업이 입금완료로 변경됩니다.</p></div></div>{visibleOrders.length === 0 ? <div className="empty-state">정산 내역이 없습니다.</div> : <div className="desktop-table"><table className="simple-table settlement-table settlement-orders-table"><thead><tr>{user.role === 'admin' && <th>등록 그룹</th>}<th>상호명</th><th>{user.role === 'admin' ? '관리자 정산액' : '접수금액'}</th><th>시작일</th><th>상태</th></tr></thead><tbody>{visibleOrders.map((order) => <tr key={order.id}>{user.role === 'admin' && <td>{currentGroupNameForOrder(order) || '미지정 그룹'}</td>}<td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td><strong>{formatWon(orderSettlementAmount(order))}</strong></td><td>{formatDate(order.startDate)}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}</section>}
 
       {selectedCount > 0 && <div className="settlement-selection-bar">
         <div><strong>{selectedCount.toLocaleString('ko-KR')}건 선택</strong><span>예정 입금액 {formatWon(selectedAmount)}</span>{selectAllFiltered && <small>검색 결과 전체 선택 · 제외 {excludedRows.size}건</small>}</div>
