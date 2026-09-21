@@ -1,0 +1,42 @@
+name: Performance regression verification
+on:
+  push:
+    branches: ["perf/2026-09-21"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Build
+        run: npm run build
+      - name: Existing regression tests
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import { spawnSync } from 'node:child_process';
+          const { scripts } = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          for (const name of Object.keys(scripts).filter(name => name.startsWith('test:'))) {
+            const result = spawnSync('npm', ['run', name], { stdio: 'inherit' });
+            if (result.status !== 0) process.exit(result.status || 1);
+          }
+          JS
+      - name: Package reproducible verification workspace
+        if: always()
+        run: tar --exclude='./.git' --exclude='./dist' -czf /tmp/spark-verification.tar.gz .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: spark-verification-workspace
+          path: /tmp/spark-verification.tar.gz
+          retention-days: 1
