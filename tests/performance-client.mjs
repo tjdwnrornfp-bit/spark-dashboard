@@ -97,3 +97,11 @@ const nh=host(false);tree=nh.render(()=>api.NotificationsPage({user:actor,notifi
 assert.ok(text(tree).includes('230'));const moreButton=nodes(tree).find(n=>n.type==='button'&&text(n).includes('더보기'));assert.ok(moreButton,'unread cursor load-more button');await moreButton.props.onClick();assert.equal(more,1)
 const app=fs.readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');assert.ok(!app.includes('setInterval'));assert.ok(!app.includes('fetchOrdersSnapshot'));assert.ok(!app.includes('fetchPaymentStepsSnapshot'))
 console.log('PASS: 10,000-row source renders only 50 rows in one responsive layout; cross-page selection/export; true unread count and unread load-more; no root timer or full snapshots')
+
+for (const name of ['handleOrderStatusChange', 'handleArchiveOrder']) {
+  const start = app.indexOf(`const ${name} =`);
+  assert.ok(start >= 0);
+  const handler = app.slice(start, app.indexOf('\n  const ', start + 1));
+  assert.match(handler, /refreshOrderEffectsRemote\(false\)/);
+}
+console.log('PASS: status and archive writes invalidate server reads without waiting for Realtime');

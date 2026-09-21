@@ -662,6 +662,7 @@ export default function App() {
     if (isSupabaseConfigured) {
       const updated = await setRemoteOrderStatus(order, status, reason)
       setRemoteOrders((current) => current.map((item) => item.dbId === updated.dbId ? updated : item))
+      void refreshOrderEffectsRemote(false).catch(() => undefined)
       return
     }
     const updated = transitionOrder(order, status)
@@ -854,7 +855,7 @@ export default function App() {
       const orderKey = updated.dbId ?? updated.id
       setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === orderKey ? updated : item))
       setRemotePaymentSteps((current) => current.filter((step) => step.orderDbId !== orderKey))
-      void refreshNotificationsRemote().catch(() => undefined)
+      void refreshOrderEffectsRemote(false).catch(() => undefined)
       return
     }
     const nowIso = new Date().toISOString()
