@@ -1,3 +1,9 @@
+import { Pagination } from '../components/Pagination'
+import { useIsMobile } from '../hooks/useIsMobile'
+import { useRemoteRead } from '../hooks/useRemoteRead'
+import { isSupabaseConfigured } from '../lib/supabase'
+import { fetchOrderPage, fetchOrdersForExport } from '../lib/performance'
+import { RemoteAdminOrdersExportModal } from './RemoteAdminOrdersExportModal'
 import { MemberOrderEditModal } from './MemberOrderEditModal'
 import { OrderDateFilter } from '../components/OrderDateFilter'
 import { createdAtInDateRange } from '../lib/orderDateFilter'
@@ -161,6 +167,23 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   const [integratedExportOpen, setIntegratedExportOpen] = useState(false)
   const [bulkTransferOrders, setBulkTransferOrders] = useState<Order[] | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const mobile = useIsMobile()
+  const today = useMemo(() => todayInSeoul(now), [now])
+  const [listPage, setListPage] = useState(1)
+  const [exporting, setExporting] = useState(false)
+  const selectedCache = useRef(new Map<string, Order>())
+  const filterKey = JSON.stringify([user.id, programType, filter, archiveView, query, dateRange, sortDirection])
+  // Reset the effective page immediately on filter changes, not one effect later.
+  const [pageFilterKey, setPageFilterKey] = useState(filterKey)
+  const effectivePage = pageFilterKey === filterKey ? listPage : 1
+  const changePage = (next: number) => { setPageFilterKey(filterKey); setListPage(next); selectionAnchor.current = null }
+  const remotePage = useRemoteRead(`orders:${user.id}:${memberEditRefreshKey}:${filterKey}:${effectivePage}`, () => fetchOrderPage({
+    p_program_type: programType, p_status: filter === '전체' ? null : filter,
+    p_archived: archiveView === 'archived', p_query: query.trim() || null,
+    p_created_from: user.role === 'admin' ? dateRange.from || null : null,
+    p_created_to: user.role === 'admin' ? dateRange.to || null : null,
+    p_sort: sortDirection, p_page: effectivePage, p_page_size: 50,
+  }), isSupabaseConfigured, 200)
   const minimumStartDate = earliestOrderStartDate(now)
   const programLabel = labelForProgram(programType)
   const unitPrice = getUserProgramPrice(user, programType)
@@ -170,14 +193,19 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   const meta = programMeta(programType)
 
   const dateFilteredOrders = useMemo(() => {
+    if (isSupabaseConfigured) return []
     if (user.role !== 'admin') return orders
     const matchesDate = createdAtInDateRange(dateRange)
     return orders.filter((order) => matchesDate(order.createdAt))
   }, [orders, dateRange, user.role])
   const sourceOrders = useMemo(() => dateFilteredOrders.filter((order) => (order.programType ?? 'spark') === programType), [dateFilteredOrders, programType])
-  const selectedOrders = useMemo(() => orders.filter((order) => selectedIds.has(order.id)), [orders, selectedIds])
+  const selectedOrders = useMemo(() => {
+    if (!isSupabaseConfigured) return orders.filter((order) => selectedIds.has(order.id))
+    const current = new Map([...selectedCache.current, ...(remotePage.data?.rows ?? []).map((order) => [order.id, order] as const)])
+    return [...current.values()].filter((order) => selectedIds.has(order.id))
+  }, [orders, selectedIds, remotePage.data])
 
-  const visible = useMemo(() => {
+  const localVisible = useMemo(() => {
     const owned = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
     const source = owned.filter((order) => archiveView === 'archived' ? Boolean(order.archivedAt) : !order.archivedAt)
     return source
@@ -192,8 +220,16 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
       })
   }, [archiveView, filter, sourceOrders, query, sortDirection, user.id, user.role])
 
+  const currentPage = isSupabaseConfigured ? remotePage.data?.page ?? effectivePage : Math.min(effectivePage, Math.max(1, Math.ceil(localVisible.length / 50)))
+  const visible = useMemo(() => isSupabaseConfigured ? remotePage.data?.rows ?? [] : localVisible.slice((currentPage - 1) * 50, currentPage * 50), [remotePage.data, localVisible, currentPage])
+  useEffect(() => {
+    for (const order of visible) if (selectedIds.has(order.id)) selectedCache.current.set(order.id, order)
+    for (const id of selectedCache.current.keys()) if (!selectedIds.has(id)) selectedCache.current.delete(id)
+  }, [visible, selectedIds])
+
   useEffect(() => { selectionAnchor.current = null }, [filter, archiveView, query, sortDirection, programType, dateRange])
   useEffect(() => {
+    if (isSupabaseConfigured) return // Other pages are not deletions.
     const ids = new Set(orders.map((order) => order.id))
     setSelectedIds((current) => new Set([...current].filter((id) => ids.has(id))))
   }, [orders])
@@ -201,11 +237,12 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
     let active = true
     setEligibility(new Map()); setEligibilityError('')
     if (user.isOperationsManager || !['agency', 'distributor'].includes(user.role ?? '')) return
-    const ids = sourceOrders.filter((o) => o.createdBy === user.id && o.status === '입금대기' && !o.archivedAt && o.dbId).map((o) => o.dbId!)
+    const ids = visible.filter((o) => o.createdBy === user.id && o.status === '입금대기' && !o.archivedAt && o.dbId).map((o) => o.dbId!)
     void fetchOwnOrderEditEligibility(ids).then((result) => { if (active) setEligibility(result) }).catch(() => { if (active) setEligibilityError('수정 권한을 확인하지 못했습니다. 새로고침 후 다시 시도해 주세요.') })
     return () => { active = false }
-  }, [sourceOrders, user.id, user.role, user.isOperationsManager, memberEditRefreshKey])
+  }, [visible, user.id, user.role, user.isOperationsManager, memberEditRefreshKey])
   const toggleSelected = (order: Order, shift = false) => {
+    visible.forEach((row) => selectedCache.current.set(row.id, row))
     const anchor = selectionAnchor.current
     setSelectedIds((current) => selectRowRange(current, visible.map((o) => o.id), anchor, order.id, shift))
     if (!shift || !anchor || !visible.some((o) => o.id === anchor)) selectionAnchor.current = order.id
@@ -218,10 +255,11 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   }
 
   const counts = useMemo(() => {
+    if (isSupabaseConfigured) return remotePage.data?.counts ?? Object.fromEntries(['전체', ...STATUS_ORDER].map((status) => [status, 0])) as Record<'전체' | OrderStatus, number>
     const owned = user.role === 'admin' ? sourceOrders : sourceOrders.filter((order) => order.createdBy === user.id)
     const source = owned.filter((order) => archiveView === 'archived' ? Boolean(order.archivedAt) : !order.archivedAt)
     return Object.fromEntries(['전체', ...STATUS_ORDER].map((status) => [status, status === '전체' ? source.length : source.filter((order) => order.status === status).length])) as Record<'전체' | OrderStatus, number>
-  }, [archiveView, sourceOrders, user.id, user.role])
+  }, [archiveView, sourceOrders, user.id, user.role, remotePage.data])
 
   const updateDraft = (field: keyof OrderDraft, value: string) => {
     setDraft((current) => ({ ...current, [field]: value }))
@@ -294,20 +332,29 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   }
 
   const toggleAll = () => {
+    visible.forEach((row) => selectedCache.current.set(row.id, row))
     setSelectedIds((current) => {
       const allSelected = visible.length > 0 && visible.every((order) => current.has(order.id))
-      return allSelected ? new Set() : new Set(visible.map((order) => order.id))
+      const next = new Set(current)
+      visible.forEach((order) => allSelected ? next.delete(order.id) : next.add(order.id))
+      return next
     })
   }
 
-  const downloadExcel = () => {
-    const target = orders.filter((order) => (order.programType ?? 'spark') === programType && selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  const downloadExcel = async () => {
+    if (exporting) return
+    setExporting(true)
+    try {
+    const selectedForProgram = selectedOrders.filter((order) => (order.programType ?? 'spark') === programType)
+    const target = isSupabaseConfigured ? await fetchOrdersForExport({ p_program_type: programType, p_archived: null, p_order_ids: selectedForProgram.map((order) => order.id), p_sort: 'asc' }) : orders.filter((order) => (order.programType ?? 'spark') === programType && selectedIds.has(order.id)).sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+    if (isSupabaseConfigured && target.length !== selectedForProgram.length) throw new Error('선택한 작업이 삭제되거나 프로그램이 변경되었습니다. 선택을 확인해 주세요.')
     if (target.length === 0) return window.alert('다운로드할 작업을 선택해 주세요.')
     downloadAdminOrdersExcel({
       orders: target,
       fileName: `${meta.orderPrefix.toLowerCase()}-orders-${todayInSeoul(now)}.xlsx`,
       sheetName: meta.sheetName,
     })
+    } catch (error) { window.alert(getErrorMessage(error)) } finally { setExporting(false) }
   }
 
   const openBulkProgramTransfer = () => {
@@ -394,7 +441,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
       <PageHeader
         title={user.role === 'admin' ? `${programLabel} 접수` : `${programLabel} 접수`}
         subtitle={user.role === 'admin' ? `${programLabel} 접수 작업과 상태를 관리합니다.` : `${programLabel} 작업을 개별 또는 엑셀로 대량 접수합니다.`}
-        action={user.role !== 'admin' ? <div className="page-header-actions"><button className="secondary-button small" onClick={downloadBulkTemplate}><Icon name="download" />대량접수 양식</button><button className="secondary-button small" onClick={() => fileInputRef.current?.click()}><Icon name="upload" />대량작업접수</button><button className="primary-button small" onClick={toggleForm}><Icon name={formOpen ? 'close' : 'plus'} />{formOpen ? '접수 닫기' : '접수 신청'}</button><input ref={fileInputRef} className="hidden-file-input" type="file" accept=".xlsx,.xls" onChange={(event) => void readBulkFile(event)} /></div> : <div className="page-header-actions"><button className="primary-button small" onClick={() => setAssignmentMode('manual')}><Icon name="plus" />작업 부여</button><button className="secondary-button small" onClick={() => setAssignmentMode('excel')}><Icon name="upload" />엑셀 일괄 부여</button><button className="secondary-button small" onClick={downloadExcel}><Icon name="download" />선택 엑셀</button><button className="secondary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></div>}
+        action={user.role !== 'admin' ? <div className="page-header-actions"><button className="secondary-button small" onClick={downloadBulkTemplate}><Icon name="download" />대량접수 양식</button><button className="secondary-button small" onClick={() => fileInputRef.current?.click()}><Icon name="upload" />대량작업접수</button><button className="primary-button small" onClick={toggleForm}><Icon name={formOpen ? 'close' : 'plus'} />{formOpen ? '접수 닫기' : '접수 신청'}</button><input ref={fileInputRef} className="hidden-file-input" type="file" accept=".xlsx,.xls" onChange={(event) => void readBulkFile(event)} /></div> : <div className="page-header-actions"><button className="primary-button small" onClick={() => setAssignmentMode('manual')}><Icon name="plus" />작업 부여</button><button className="secondary-button small" onClick={() => setAssignmentMode('excel')}><Icon name="upload" />엑셀 일괄 부여</button><button className="secondary-button small" onClick={() => void downloadExcel()}><Icon name="download" />선택 엑셀</button><button className="secondary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></div>}
       />
       {user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'manual' && <AdminOrderAssignmentModal programType={programType} onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminAssign} onClose={() => setAssignmentMode(null)} />}
       {user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'excel' && <AdminBulkOrderAssignmentModal onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminBulkAssign} onClose={() => setAssignmentMode(null)} />}
@@ -420,8 +467,9 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
         {user.role === 'admin' && <OrderDateFilter value={dateRange} onChange={setDateRange} now={now} />}
         <div className="archive-view-tabs"><button className={archiveView === 'active' ? 'active' : ''} onClick={() => { setArchiveView('active'); setSelectedIds(new Set()) }}>운영 작업</button><button className={archiveView === 'archived' ? 'active' : ''} onClick={() => { setArchiveView('archived'); setSelectedIds(new Set()) }}>보관함 <span>{sourceOrders.filter((order) => order.archivedAt && (user.role === 'admin' || order.createdBy === user.id)).length}</span></button></div>
         <div className="order-toolbar"><div className="filter-tabs">{(['전체', ...STATUS_ORDER] as const).map((status) => <button key={status} className={filter === status ? 'active' : ''} onClick={() => setFilter(status)}>{status}<span>{counts[status]}</span></button>)}</div><div className="toolbar-actions"><select className="order-sort-select" aria-label="접수일 정렬" value={sortDirection} onChange={(event) => setSortDirection(event.target.value as OrderSortDirection)}><option value="desc">최신순</option><option value="asc">오래된순</option></select><label className="search-box"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="등록자·그룹명·상호명·추천인·MID 검색" /></label>{user.role === 'admin' && <div className="admin-order-actions"><button className="secondary-button small bulk-transfer-button" onClick={openBulkProgramTransfer}><Icon name="refresh" />프로그램 변경{selectedOrders.length > 0 && <span>{selectedOrders.length.toLocaleString('ko-KR')}</span>}</button></div>}</div></div>
-        {visible.length === 0 ? <div className="empty-state fill-empty-state">조건에 맞는 작업이 없습니다.</div> : <>
-          <div className="desktop-table"><table className={user.role === 'admin' ? 'orders-table admin-orders-table' : 'orders-table'}>
+        {isSupabaseConfigured && remotePage.error && <div className="performance-read-error" role="alert">{remotePage.error} <button className="secondary-button small" onClick={remotePage.reload}>다시 조회</button></div>}
+        {isSupabaseConfigured && remotePage.loading ? <div className="empty-state" role="status">작업을 조회하고 있습니다.</div> : visible.length === 0 ? <div className="empty-state fill-empty-state">조건에 맞는 작업이 없습니다.</div> : <>
+          {!mobile && <div className="desktop-table"><table className={user.role === 'admin' ? 'orders-table admin-orders-table' : 'orders-table'}>
             {user.role === 'admin' && <colgroup>
               <col className="order-col-check" /><col className="order-col-number" />
               <col className="order-col-date" /><col className="order-col-date" /><col className="order-col-days" />
@@ -430,12 +478,14 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
               <col className="order-col-quantity" /><col className="order-col-quantity" /><col className="order-col-status" />
               {archiveView === 'archived' && <col className="order-col-reason" />}
               <col className="order-col-actions" />
-            </colgroup>}<thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th>{user.role !== 'admin' && <th>MID</th>}<th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{archiveView === 'archived' && <th>보관 사유</th>}{showProgress && <th>오늘 진행</th>}<th>관리</th></tr></thead><tbody>{visible.map((order, index) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <tr key={order.id} onClick={(event) => { if (user.role === 'admin' && !isRowInteractive(event.target)) toggleSelected(order, event.shiftKey) }} className={selectedIds.has(order.id) ? 'selected-row' : ''}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} aria-label={`${order.storeName} 선택`} onClick={(event) => toggleSelected(order, event.shiftKey)} onChange={() => {}} /></td>}<td>{index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, now)}</td>{user.role === 'admin' && <><td><span className="order-cell-text" title={order.creatorUsername}>{order.creatorUsername}</span></td><td><span className="order-cell-text" title={currentGroupNameForOrder(order) || '-'}>{currentGroupNameForOrder(order) || '-'}</span></td></>}<td className="order-store-cell"><strong className="order-cell-text" title={order.storeName}>{order.storeName}</strong></td><td><a href={order.placeUrl} title={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td>{user.role !== 'admin' && <td>{order.mid}</td>}<td><span className="order-cell-text" title={order.keyword}>{order.keyword}</span></td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</td><td><div className="order-status-stack"><StatusBadge status={order.status} />{order.programTransferState === 'payment_pending' && <span className="transfer-pending-badge">{order.programTransferDifference > 0 ? `추가입금 ${formatWon(order.programTransferDifference)}` : '변경 정산 대기'}</span>}</div></td>{archiveView === 'archived' && <td><span className="order-cell-text" title={order.archiveReason || '-'}>{order.archiveReason || '-'}</span></td>}{showProgress && <td>{order.status === '구동중' ? <ProgressGauge order={order} now={now} compact /> : <span className="muted">-</span>}</td>}<td><div className="table-action-stack">{memberActions(order)}{user.role === 'admin' && !user.isOperationsManager && !order.archivedAt && <button className="secondary-button small" onClick={() => setCorrectionOrder(order)}>수정</button>}{user.role === 'admin' && !order.archivedAt && <select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}{!canArchive && !canRestore && <span className="muted">-</span>}</div></td></tr>})}</tbody></table></div>
-          <div className="mobile-order-list">{visible.map((order) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <article key={order.id} onClick={(event) => { if (user.role === 'admin' && !isRowInteractive(event.target)) toggleSelected(order, event.shiftKey) }} className={`mobile-order-card ${selectedIds.has(order.id) ? 'selected-row' : ''}`}><div>{user.role === 'admin' && <label className="mobile-order-select"><input type="checkbox" checked={selectedIds.has(order.id)} aria-label={`${order.storeName} 선택`} onClick={(event) => toggleSelected(order, event.shiftKey)} onChange={() => {}} /><span>선택</span></label>}<strong title={order.storeName}>{order.storeName}</strong><StatusBadge status={order.status} /></div>{order.programTransferState === 'payment_pending' && <span className="transfer-pending-badge">{order.programTransferDifference > 0 ? `추가입금 ${formatWon(order.programTransferDifference)}` : '변경 정산 대기'}</span>}<p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{order.archivedAt && <div><dt>보관 사유</dt><dd>{order.archiveReason || '-'}</dd></div>}{user.role === 'admin' && <><div><dt>등록자</dt><dd>{order.creatorUsername}</dd></div><div><dt>그룹명</dt><dd>{currentGroupNameForOrder(order) || '-'}</dd></div></>}</dl>{order.status === '구동중' && showProgress && <ProgressGauge order={order} now={now} />}{memberActions(order)}{user.role === 'admin' && !user.isOperationsManager && !order.archivedAt && <button className="secondary-button small" onClick={() => setCorrectionOrder(order)}>수정</button>}{user.role === 'admin' && !order.archivedAt && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}</article>})}</div>
+            </colgroup>}<thead><tr>{user.role === 'admin' && <th className="checkbox-cell"><input type="checkbox" checked={visible.length > 0 && visible.every((order) => selectedIds.has(order.id))} onChange={toggleAll} /></th>}<th>No.</th><th>시작일</th><th>종료일</th><th>남은일</th>{user.role === 'admin' && <><th>등록자</th><th>그룹명</th></>}<th>상호명</th><th>플레이스 URL</th>{user.role !== 'admin' && <th>MID</th>}<th>키워드</th><th>구동일수</th><th>일일수량</th><th>상태</th>{archiveView === 'archived' && <th>보관 사유</th>}{showProgress && <th>오늘 진행</th>}<th>관리</th></tr></thead><tbody>{visible.map((order, index) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <tr key={order.id} onClick={(event) => { if (user.role === 'admin' && !isRowInteractive(event.target)) toggleSelected(order, event.shiftKey) }} className={selectedIds.has(order.id) ? 'selected-row' : ''}>{user.role === 'admin' && <td className="checkbox-cell"><input type="checkbox" checked={selectedIds.has(order.id)} aria-label={`${order.storeName} 선택`} onClick={(event) => toggleSelected(order, event.shiftKey)} onChange={() => {}} /></td>}<td>{(currentPage - 1) * 50 + index + 1}</td><td>{formatDate(order.startDate)}</td><td>{formatDate(order.endDate)}</td><td>{daysRemaining(order.startDate, order.endDate, today)}</td>{user.role === 'admin' && <><td><span className="order-cell-text" title={order.creatorUsername}>{order.creatorUsername}</span></td><td><span className="order-cell-text" title={currentGroupNameForOrder(order) || '-'}>{currentGroupNameForOrder(order) || '-'}</span></td></>}<td className="order-store-cell"><strong className="order-cell-text" title={order.storeName}>{order.storeName}</strong></td><td><a href={order.placeUrl} title={order.placeUrl} target="_blank" rel="noreferrer">{order.placeUrl}</a></td>{user.role !== 'admin' && <td>{order.mid}</td>}<td><span className="order-cell-text" title={order.keyword}>{order.keyword}</span></td><td>{order.operationDays}일</td><td>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</td><td><div className="order-status-stack"><StatusBadge status={order.status} />{order.programTransferState === 'payment_pending' && <span className="transfer-pending-badge">{order.programTransferDifference > 0 ? `추가입금 ${formatWon(order.programTransferDifference)}` : '변경 정산 대기'}</span>}</div></td>{archiveView === 'archived' && <td><span className="order-cell-text" title={order.archiveReason || '-'}>{order.archiveReason || '-'}</span></td>}{showProgress && <td>{order.status === '구동중' ? <ProgressGauge order={order} compact /> : <span className="muted">-</span>}</td>}<td><div className="table-action-stack">{memberActions(order)}{user.role === 'admin' && !user.isOperationsManager && !order.archivedAt && <button className="secondary-button small" onClick={() => setCorrectionOrder(order)}>수정</button>}{user.role === 'admin' && !order.archivedAt && <select className="status-select" disabled={changingId === order.id} value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}{!canArchive && !canRestore && <span className="muted">-</span>}</div></td></tr>})}</tbody></table></div>}
+          {mobile && <div className="mobile-order-list">{visible.map((order) => { const canArchive = !order.archivedAt && (user.role === 'admin' || (order.createdBy === user.id && ['입금대기', '정지', '만료'].includes(order.status))); const canRestore = Boolean(order.archivedAt && user.role === 'admin'); return <article key={order.id} onClick={(event) => { if (user.role === 'admin' && !isRowInteractive(event.target)) toggleSelected(order, event.shiftKey) }} className={`mobile-order-card ${selectedIds.has(order.id) ? 'selected-row' : ''}`}><div>{user.role === 'admin' && <label className="mobile-order-select"><input type="checkbox" checked={selectedIds.has(order.id)} aria-label={`${order.storeName} 선택`} onClick={(event) => toggleSelected(order, event.shiftKey)} onChange={() => {}} /><span>선택</span></label>}<strong title={order.storeName}>{order.storeName}</strong><StatusBadge status={order.status} /></div>{order.programTransferState === 'payment_pending' && <span className="transfer-pending-badge">{order.programTransferDifference > 0 ? `추가입금 ${formatWon(order.programTransferDifference)}` : '변경 정산 대기'}</span>}<p>{order.keyword}</p><dl><div><dt>구동기간</dt><dd>{order.startDate} ~ {order.endDate}</dd></div><div><dt>일일수량</dt><dd>{order.dailyShots.toLocaleString('ko-KR')}{quantityUnit}</dd></div><div><dt>금액</dt><dd>{formatWon(order.totalAmount)}</dd></div>{order.archivedAt && <div><dt>보관 사유</dt><dd>{order.archiveReason || '-'}</dd></div>}{user.role === 'admin' && <><div><dt>등록자</dt><dd>{order.creatorUsername}</dd></div><div><dt>그룹명</dt><dd>{currentGroupNameForOrder(order) || '-'}</dd></div></>}</dl>{order.status === '구동중' && showProgress && <ProgressGauge order={order} />}{memberActions(order)}{user.role === 'admin' && !user.isOperationsManager && !order.archivedAt && <button className="secondary-button small" onClick={() => setCorrectionOrder(order)}>수정</button>}{user.role === 'admin' && !order.archivedAt && <select className="status-select" value={order.status} onChange={(event) => void changeStatus(order, event.target.value as OrderStatus)}>{allowedOrderStatuses(order.status).map((status) => <option key={status}>{status}</option>)}</select>}{canArchive && <button className="secondary-button small archive-button" disabled={changingId === order.id} onClick={() => void archiveOrder(order)}><Icon name="archive" />보관</button>}{canRestore && <button className="secondary-button small restore-button" disabled={changingId === order.id} onClick={() => void restoreOrder(order)}><Icon name="restore" />복원</button>}</article>})}</div>}
         </>}
+        <Pagination page={currentPage} total={isSupabaseConfigured ? remotePage.data?.totalCount ?? 0 : localVisible.length} disabled={remotePage.loading} onChange={changePage} />
       </section>
 
-      {integratedExportOpen && user.role === 'admin' && <AdminOrdersExportModal orders={dateFilteredOrders} dateRange={dateRange} now={now} onClose={() => setIntegratedExportOpen(false)} />}
+      {integratedExportOpen && isSupabaseConfigured && user.role === 'admin' && <RemoteAdminOrdersExportModal userId={user.id} dateRange={dateRange} now={now} onClose={() => setIntegratedExportOpen(false)} />}
+      {integratedExportOpen && !isSupabaseConfigured && user.role === 'admin' && <AdminOrdersExportModal orders={dateFilteredOrders} dateRange={dateRange} now={now} onClose={() => setIntegratedExportOpen(false)} />}
       {memberEdit && !user.isOperationsManager && <MemberOrderEditModal order={memberEdit.order} programOnly={memberEdit.programOnly} onPreview={onMemberEditPreview} onApply={onMemberEditApply} onClose={() => setMemberEdit(null)} />}
       {correctionOrder && user.role === 'admin' && !user.isOperationsManager && <AdminOrderCorrectionModal order={correctionOrder} onPreview={onCorrectionPreview} onApply={onCorrectionApply} onClose={() => setCorrectionOrder(null)} />}
       {bulkTransferOrders && user.role === 'admin' && <AdminBulkProgramTransferModal orders={bulkTransferOrders} onClose={() => setBulkTransferOrders(null)} onPreview={onBulkProgramTransferPreview} onTransfer={onBulkProgramTransfer} onFinished={finishBulkProgramTransfer} />}

@@ -1,14 +1,6 @@
 const SEOUL_TIME_ZONE = 'Asia/Seoul'
 
-export interface SeoulDateTimeParts {
-  date: string
-  hour: number
-  minute: number
-  second: number
-}
-
-export function seoulDateTimeParts(date = new Date()): SeoulDateTimeParts {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
+const seoulPartsFormatter = new Intl.DateTimeFormat('en-CA', {
     timeZone: SEOUL_TIME_ZONE,
     year: 'numeric',
     month: '2-digit',
@@ -18,7 +10,19 @@ export function seoulDateTimeParts(date = new Date()): SeoulDateTimeParts {
     second: '2-digit',
     hourCycle: 'h23',
   })
-  const parts = Object.fromEntries(formatter.formatToParts(date).map((part) => [part.type, part.value]))
+
+const dateFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: SEOUL_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' })
+const dateTimeFormatter = new Intl.DateTimeFormat('ko-KR', { timeZone: SEOUL_TIME_ZONE, year: '2-digit', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+
+export interface SeoulDateTimeParts {
+  date: string
+  hour: number
+  minute: number
+  second: number
+}
+
+export function seoulDateTimeParts(date = new Date()): SeoulDateTimeParts {
+  const parts = Object.fromEntries(seoulPartsFormatter.formatToParts(date).map((part) => [part.type, part.value]))
   return {
     date: `${parts.year}-${parts.month}-${parts.day}`,
     hour: Number(parts.hour),
@@ -75,23 +79,16 @@ export function seoulTimeIso(dateString: string, hour: number): string {
 }
 
 export function formatDate(dateString: string): string {
-  return new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' })
+  return dateFormatter
     .format(new Date(`${dateString}T00:00:00+09:00`))
 }
 
 export function formatDateTime(dateString: string): string {
-  return new Intl.DateTimeFormat('ko-KR', {
-    timeZone: SEOUL_TIME_ZONE,
-    year: '2-digit',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(dateString))
+  return dateTimeFormatter.format(new Date(dateString))
 }
 
-export function daysRemaining(startDate: string, endDate: string, now = new Date()): number | '만료' {
-  const today = todayInSeoul(now)
+export function daysRemaining(startDate: string, endDate: string, now: Date | string = new Date()): number | '만료' {
+  const today = typeof now === 'string' ? now : todayInSeoul(now)
   if (today < startDate) {
     const start = Date.parse(`${startDate}T00:00:00Z`)
     const end = Date.parse(`${endDate}T00:00:00Z`)

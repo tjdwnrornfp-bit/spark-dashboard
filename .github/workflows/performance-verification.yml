@@ -1,0 +1,32 @@
+name: Performance regression verification
+on:
+  push:
+    branches: [main, "perf/2026-09-21"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Regression tests and production build
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee /tmp/performance-verification.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: performance-verification
+          path: /tmp/performance-verification.log
+          retention-days: 7
