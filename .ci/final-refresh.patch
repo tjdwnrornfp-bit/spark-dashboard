@@ -1,0 +1,33 @@
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -662,6 +662,7 @@
+     if (isSupabaseConfigured) {
+       const updated = await setRemoteOrderStatus(order, status, reason)
+       setRemoteOrders((current) => current.map((item) => item.dbId === updated.dbId ? updated : item))
++      void refreshOrderEffectsRemote(false).catch(() => undefined)
+       return
+     }
+     const updated = transitionOrder(order, status)
+@@ -854,7 +855,7 @@
+       const orderKey = updated.dbId ?? updated.id
+       setRemoteOrders((current) => current.map((item) => (item.dbId ?? item.id) === orderKey ? updated : item))
+       setRemotePaymentSteps((current) => current.filter((step) => step.orderDbId !== orderKey))
+-      void refreshNotificationsRemote().catch(() => undefined)
++      void refreshOrderEffectsRemote(false).catch(() => undefined)
+       return
+     }
+     const nowIso = new Date().toISOString()
+--- a/tests/performance-client.mjs
++++ b/tests/performance-client.mjs
+@@ -97,3 +97,11 @@
+ assert.ok(text(tree).includes('230'));const moreButton=nodes(tree).find(n=>n.type==='button'&&text(n).includes('더보기'));assert.ok(moreButton,'unread cursor load-more button');await moreButton.props.onClick();assert.equal(more,1)
+ const app=fs.readFileSync(new URL('../src/App.tsx',import.meta.url),'utf8');assert.ok(!app.includes('setInterval'));assert.ok(!app.includes('fetchOrdersSnapshot'));assert.ok(!app.includes('fetchPaymentStepsSnapshot'))
+ console.log('PASS: 10,000-row source renders only 50 rows in one responsive layout; cross-page selection/export; true unread count and unread load-more; no root timer or full snapshots')
++
++for (const name of ['handleOrderStatusChange', 'handleArchiveOrder']) {
++  const start = app.indexOf(`const ${name} =`);
++  assert.ok(start >= 0);
++  const handler = app.slice(start, app.indexOf('\n  const ', start + 1));
++  assert.match(handler, /refreshOrderEffectsRemote\(false\)/);
++}
++console.log('PASS: status and archive writes invalidate server reads without waiting for Realtime');

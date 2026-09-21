@@ -1,9 +1,9 @@
-name: Apply verified performance package
+name: Final write refresh verification
 on:
   push:
     branches: ["perf/2026-09-21"]
     paths:
-      - '.ci/performance.patch.xz.*'
+      - '.ci/final-refresh.patch'
       - '.github/workflows/apply-performance-package.yml'
 permissions:
   contents: write
@@ -22,35 +22,26 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-      - name: Verify and apply exact reviewed patch
+      - name: Check and apply reviewed refresh fix
         run: |
-          git merge-base --is-ancestor 34eed324a052d1773048565f0f489af394a0cc75 HEAD
-          python3 - <<'PY'
-          import hashlib, lzma, pathlib, subprocess
-          parts = sorted(pathlib.Path('.ci').glob('performance.patch.xz.*'))
-          assert len(parts) == 5, 'Incomplete patch package'
-          patch = lzma.decompress(b''.join(p.read_bytes() for p in parts))
-          assert hashlib.sha256(patch).hexdigest() == '3ad350d2af23db1b4b831f986320f5f7a1a386e98f5a3916f61b1975dfd44df8', 'Patch integrity mismatch'
-          target = pathlib.Path('/tmp/performance.patch')
-          target.write_bytes(patch)
-          subprocess.run(['git', 'apply', '--check', str(target)], check=True)
-          subprocess.run(['git', 'apply', str(target)], check=True)
-          PY
+          echo 'cc4100282b5f238ffd3bc262ae3e6d8c212b357286028b5567eea1d20695b54b  .ci/final-refresh.patch' | sha256sum -c -
+          git apply --check .ci/final-refresh.patch
+          git apply .ci/final-refresh.patch
       - run: npm ci
-      - name: Run all regressions and production build
+      - name: Verify all regressions and production build
         run: |
           set -o pipefail
           npm run verify 2>&1 | tee /tmp/performance-verify.log
-      - name: Commit verified application files to the isolated branch
+      - name: Commit verified refresh fix
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src supabase/migrations tests package.json package-lock.json vercel.json APPLY_V10_11.md
-          git commit -m 'perf: bounded server reads and scoped rendering v10.11.0'
+          git add src/App.tsx tests/performance-client.mjs
+          git commit -m 'fix: refresh authoritative pages after status and archive writes'
           git push origin HEAD:refs/heads/perf/2026-09-21
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: performance-package-verification
+          name: final-performance-verification
           path: /tmp/performance-verify.log
           retention-days: 7
