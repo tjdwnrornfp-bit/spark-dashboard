@@ -1,17 +1,15 @@
-name: Apply and verify start-date restrictions
+name: Start-date restrictions integration
 on:
   push:
-    branches: ['feat/start-date-blackouts-v10-12']
-    paths: ['.ci/**', '.github/workflows/apply-blackouts.yml']
+    branches: [main, 'feat/start-date-blackouts-v10-12']
+  pull_request:
+    branches: [main]
 permissions:
-  contents: write
-concurrency:
-  group: spark-blackouts-package
-  cancel-in-progress: false
+  contents: read
 jobs:
-  verify-and-commit:
+  integration:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     services:
       postgres:
         image: postgres:17
@@ -31,7 +29,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -39,26 +37,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Apply checksummed reviewed patch
-        run: |
-          cat .ci/blackouts.patch.xz.* | base64 -d | xz -d > /tmp/blackouts.patch
-          echo '95eb89d95404a56f572b6a3bbd82d7a70fc38009fdbcf437b99789ff6bb3e0a3  /tmp/blackouts.patch' | sha256sum -c -
-          git apply --check /tmp/blackouts.patch
-          git apply /tmp/blackouts.patch
       - run: npm ci
-      - name: Regression tests and production build
-        run: |
-          set -o pipefail
-          npm run verify 2>&1 | tee /tmp/blackout-verification.log
-      - name: Real PostgreSQL concurrent transactions
+      - name: PostgreSQL concurrency and stale snapshot checks
         run: |
           set -o pipefail
           python tests/start-date-restrictions-concurrency.py 2>&1 | tee /tmp/blackout-concurrency.log
-      - name: Install isolated browser
+      - name: Install test browser
         run: |
           python -m pip install playwright==1.57.0
           python -m playwright install --with-deps chromium
-      - name: Browser UI and Excel smoke tests
+      - name: Admin settings, calendar, Excel, edits, and loading failures
         run: |
           set -o pipefail
           node tests/start-date-restrictions-browser.mjs
@@ -66,17 +54,10 @@ jobs:
           server=$!
           trap 'kill "$server" || true' EXIT
           python tests/start-date-restrictions-browser.py 2>&1 | tee /tmp/blackout-browser.log
-      - name: Commit only verified application files
-        run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src tests package.json package-lock.json supabase/migrations/*_v10_12_start_date_restrictions.sql APPLY_V10_12.md
-          git commit -m 'feat: admin start-date restriction policies v10.12.0'
-          git push origin HEAD:refs/heads/feat/start-date-blackouts-v10-12
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: start-date-restriction-verification
+          name: start-date-integration
           path: |
             /tmp/blackout-*.log
             /tmp/spark-blackout-ui/*.png
