@@ -1,0 +1,84 @@
+name: Apply and verify start-date restrictions
+on:
+  push:
+    branches: ['feat/start-date-blackouts-v10-12']
+    paths: ['.ci/**', '.github/workflows/apply-blackouts.yml']
+permissions:
+  contents: write
+concurrency:
+  group: spark-blackouts-package
+  cancel-in-progress: false
+jobs:
+  verify-and-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated_ci_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: isolated_ci_only
+      PGDATABASE: postgres
+      BLACKOUT_CONCURRENCY_TEST: isolated-ci
+      BLACKOUT_UI_DIR: /tmp/spark-blackout-ui
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply checksummed reviewed patch
+        run: |
+          cat .ci/blackouts.patch.xz.* | base64 -d | xz -d > /tmp/blackouts.patch
+          echo '95eb89d95404a56f572b6a3bbd82d7a70fc38009fdbcf437b99789ff6bb3e0a3  /tmp/blackouts.patch' | sha256sum -c -
+          git apply --check /tmp/blackouts.patch
+          git apply /tmp/blackouts.patch
+      - run: npm ci
+      - name: Regression tests and production build
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee /tmp/blackout-verification.log
+      - name: Real PostgreSQL concurrent transactions
+        run: |
+          set -o pipefail
+          python tests/start-date-restrictions-concurrency.py 2>&1 | tee /tmp/blackout-concurrency.log
+      - name: Install isolated browser
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Browser UI and Excel smoke tests
+        run: |
+          set -o pipefail
+          node tests/start-date-restrictions-browser.mjs
+          python -m http.server 4173 --bind 127.0.0.1 --directory "$BLACKOUT_UI_DIR" >/tmp/blackout-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          python tests/start-date-restrictions-browser.py 2>&1 | tee /tmp/blackout-browser.log
+      - name: Commit only verified application files
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src tests package.json package-lock.json supabase/migrations/*_v10_12_start_date_restrictions.sql APPLY_V10_12.md
+          git commit -m 'feat: admin start-date restriction policies v10.12.0'
+          git push origin HEAD:refs/heads/feat/start-date-blackouts-v10-12
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: start-date-restriction-verification
+          path: |
+            /tmp/blackout-*.log
+            /tmp/spark-blackout-ui/*.png
+            /tmp/spark-blackout-ui/result.json
+          retention-days: 7
