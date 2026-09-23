@@ -19,6 +19,7 @@ export const PROGRAM_PAGE_MAP: Record<Page, ProgramType | null> = {
   settlement: null,
   members: null,
   operations: null,
+  startDateRestrictions: null,
   myinfo: null,
   notices: null,
 }

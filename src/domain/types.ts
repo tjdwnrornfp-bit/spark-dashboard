@@ -4,7 +4,7 @@ export type ApprovalStatus = 'pending' | 'approved' | 'rejected'
 export type OrderStatus = '입금대기' | '입금완료' | '구동중' | '정지' | '만료'
 export type ProgramType = 'spark' | 'spark_plus' | 'spark_s' | 'spark_s_plus'
 export type ProgramTransferState = 'none' | 'payment_pending'
-export type Page = 'dashboard' | 'notifications' | 'managedOrders' | 'downlineOrders' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'myinfo' | 'notices'
+export type Page = 'dashboard' | 'notifications' | 'managedOrders' | 'downlineOrders' | 'sparkOrders' | 'sparkPlusOrders' | 'sparkSOrders' | 'sparkSPlusOrders' | 'settlement' | 'members' | 'operations' | 'startDateRestrictions' | 'myinfo' | 'notices'
 
 export interface ProgramPriceMap {
   spark: number

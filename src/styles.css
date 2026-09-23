@@ -3753,3 +3753,29 @@ td small { margin-top: 4px; font-size: 10px; }
 .performance-pagination { display:flex; align-items:center; justify-content:flex-end; flex-wrap:wrap; gap:8px; padding:12px; }
 .performance-pagination span { margin-right:auto; font-size:13px; }
 .performance-read-error { padding:16px; color:var(--danger, #b42318); }
+
+/* Start-date restrictions: reuse existing buttons, panels and role colors. */
+.start-restriction-notice { padding: 14px 18px; border: 1px solid #f1cd9b; background: #fff8eb; border-radius: 12px; color: #654510; line-height: 1.6; }
+.start-restriction-notice p { margin: 5px 0; }
+.start-restriction-notice small { display: block; }
+.start-date-control { position: relative; min-width: 0; width: 100%; }
+.start-date-input-row { display: flex; gap: 6px; align-items: center; }
+.start-date-input-row input { min-width: 0; flex: 1; width: 100%; }
+.start-date-input-row button { flex: none; white-space: nowrap; }
+.start-date-calendar { position: relative; margin-top: 8px; padding: 12px; border: 1px solid #dfe3ee; border-radius: 10px; background: #fff; box-shadow: 0 8px 24px #18254416; z-index: 3; max-width: 340px; }
+.start-date-month { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.start-date-month button { padding: 4px 12px; border-radius: 6px; background: #f1f4f8; border: 0; cursor: pointer; }
+.start-date-grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: 3px; text-align: center; }
+.start-date-grid button { min-height: 34px; border: 1px solid transparent; border-radius: 5px; background: #f1f6fc; color: #243759; cursor: pointer; }
+.start-date-grid button[aria-pressed=true] { border-color: #385ec9; font-weight: 700; }
+.start-date-grid button:disabled { background: #f0f0f0; color: #aaa; text-decoration: line-through; cursor: not-allowed; }
+.start-date-calendar small { display: block; margin: 8px 0; line-height: 1.4; }
+.restriction-editor, .restriction-editor-actions, .restriction-list { padding: 18px; }
+.restriction-editor { margin: 0; border: 0; }
+.restriction-enabled { display: flex; align-items: center; gap: 8px; grid-column: 1 / -1; }
+.restriction-enabled input { width: auto; }
+.restriction-list { display: grid; gap: 12px; }
+.restriction-card { padding: 16px; border: 1px solid #e2e6ef; border-radius: 10px; }
+.restriction-card > div { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.restriction-card > p { margin: 10px 0; overflow-wrap: anywhere; }
+.restriction-card small { display: block; margin-bottom: 12px; color: #64748b; }

@@ -1,3 +1,4 @@
+import { startDateRestrictionError, type StartDateRestriction } from './startDateRestrictionRules'
 import type { AppSettings, Order, OrderDraft, OrderStatus, User } from '../domain/types'
 import { calculateOperationDates, earliestOrderStartDate, isIsoDate, todayInSeoul } from './date'
 import { calculateAmount } from './money'
@@ -17,7 +18,7 @@ export function extractMid(url: string): string {
   return queryMatch?.[1] ?? ''
 }
 
-export function validateDraft(draft: OrderDraft, now = new Date()): Record<string, string> {
+export function validateDraft(draft: OrderDraft, now = new Date(), restrictions: StartDateRestriction[] = []): Record<string, string> {
   const errors: Record<string, string> = {}
   if (!extractMid(draft.placeUrl)) errors.placeUrl = 'MID를 확인할 수 있는 네이버 플레이스 URL을 입력해 주세요.'
   if (Array.from(draft.storeName.trim()).length > 50) errors.storeName = '상호명은 50자 이하로 입력해 주세요.'
@@ -28,6 +29,7 @@ export function validateDraft(draft: OrderDraft, now = new Date()): Record<strin
   if (!Number.isInteger(Number(draft.operationDays)) || Number(draft.operationDays) < 1 || Number(draft.operationDays) > 2147483647) errors.operationDays = '1 이상의 정수를 입력해 주세요.'
   if (!isIsoDate(draft.startDate)) errors.startDate = '시작일을 선택해 주세요.'
   else if (draft.startDate < earliestOrderStartDate(now)) errors.startDate = '시작일은 익일부터 선택할 수 있습니다.'
+  if (!errors.startDate) { const blocked = startDateRestrictionError(draft.startDate, restrictions); if (blocked) errors.startDate = blocked }
   if (draft.memo.length > 300) errors.memo = '메모는 300자 이하로 입력해 주세요.'
   return errors
 }

@@ -1,0 +1,65 @@
+name: Start-date restrictions integration
+on:
+  push:
+    branches: [main, 'feat/start-date-blackouts-v10-12']
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated_ci_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: isolated_ci_only
+      PGDATABASE: postgres
+      BLACKOUT_CONCURRENCY_TEST: isolated-ci
+      BLACKOUT_UI_DIR: /tmp/spark-blackout-ui
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: PostgreSQL concurrency and stale snapshot checks
+        run: |
+          set -o pipefail
+          python tests/start-date-restrictions-concurrency.py 2>&1 | tee /tmp/blackout-concurrency.log
+      - name: Install test browser
+        run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Admin settings, calendar, Excel, edits, and loading failures
+        run: |
+          set -o pipefail
+          node tests/start-date-restrictions-browser.mjs
+          python -m http.server 4173 --bind 127.0.0.1 --directory "$BLACKOUT_UI_DIR" >/tmp/blackout-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          python tests/start-date-restrictions-browser.py 2>&1 | tee /tmp/blackout-browser.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: start-date-integration
+          path: |
+            /tmp/blackout-*.log
+            /tmp/spark-blackout-ui/*.png
+            /tmp/spark-blackout-ui/result.json
+          retention-days: 7
