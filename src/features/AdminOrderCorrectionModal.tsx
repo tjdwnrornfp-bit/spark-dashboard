@@ -1,3 +1,6 @@
+import { useStartDateRestrictions } from '../hooks/useStartDateRestrictions'
+import { StartDateInput, StartDateRestrictionNotice } from '../components/StartDateInput'
+import { startDateRestrictionError, assertAllowedStartDates } from '../lib/startDateRestrictions'
 import { useState } from 'react'
 import { Modal } from '../components/Modal'
 import type { Order } from '../domain/types'
@@ -10,6 +13,7 @@ export function AdminOrderCorrectionModal({ order, onPreview, onApply, onClose }
   onApply: (order: Order, draft: CorrectionDraft, reason: string) => Promise<Order>
   onClose: () => void
 }) {
+  const restrictions = useStartDateRestrictions()
   const [draft, setDraft] = useState<CorrectionDraft>({ storeName: order.storeName, keyword: order.keyword, placeUrl: order.placeUrl, dailyShots: String(order.dailyShots), operationDays: String(order.operationDays), startDate: order.startDate, memo: order.memo })
   const [reason, setReason] = useState('')
   const [preview, setPreview] = useState<CorrectionPreview | null>(null)
@@ -19,17 +23,21 @@ export function AdminOrderCorrectionModal({ order, onPreview, onApply, onClose }
   const canStart = ['입금대기', '입금완료'].includes(order.status) && !order.activatedAt
   const run = async () => {
     if (busy) return
+    const blocked = startDateRestrictionError(draft.startDate, restrictions.rules, order.startDate)
+    if (blocked) { setError(blocked); setPreview(null); return }
     setBusy(true); setError('')
     try {
+      await assertAllowedStartDates([draft], order.startDate)
       if (preview?.allowed) { await onApply(order, draft, reason); onClose() }
       else setPreview(await onPreview(order, draft, reason))
     } catch (e) { setError(e && typeof e === 'object' && 'message' in e ? String(e.message) : '수정에 실패했습니다.'); setPreview(null) }
     finally { setBusy(false) }
   }
-  return <Modal title="작업 수정" description={`${order.id} · 기존 단가 ${formatWon(order.pricePerShot)} 적용 · 프로그램 변경은 기존 프로그램 변경 메뉴를 이용하세요.`} className="order-correction-modal" onClose={() => { if (!busy) onClose() }} footer={<><button className="secondary-button" disabled={busy} onClick={onClose}>닫기</button><button className="primary-button" disabled={busy || reason.trim().length < 2 || Boolean(preview && !preview.allowed)} onClick={() => void run()}>{busy ? '확인 중…' : preview?.allowed ? '수정 적용' : '변경 영향 확인'}</button></>}>
+  return <Modal title="작업 수정" description={`${order.id} · 기존 단가 ${formatWon(order.pricePerShot)} 적용 · 프로그램 변경은 기존 프로그램 변경 메뉴를 이용하세요.`} className="order-correction-modal" onClose={() => { if (!busy) onClose() }} footer={<><button className="secondary-button" disabled={busy} onClick={onClose}>닫기</button><button className="primary-button" disabled={busy || Boolean(startDateRestrictionError(draft.startDate, restrictions.rules, order.startDate)) || reason.trim().length < 2 || Boolean(preview && !preview.allowed)} onClick={() => void run()}>{busy ? '확인 중…' : preview?.allowed ? '수정 적용' : '변경 영향 확인'}</button></>}>
+    <StartDateRestrictionNotice state={restrictions} />
     <div className="correction-columns"><strong>항목</strong><strong>변경 전</strong><strong>변경 후</strong></div>
     <fieldset disabled={busy} className="assignment-fields">
-      {fields.map(([key, label]) => <label className="correction-columns" key={key}><span>{label}</span><span className="correction-before">{String(order[key]) || '-'}</span><input aria-label={`변경 후 ${label}`} type={key === 'startDate' ? 'date' : ['dailyShots', 'operationDays'].includes(key) ? 'number' : 'text'} min={['dailyShots', 'operationDays'].includes(key) ? 1 : undefined} step={1} maxLength={key === 'memo' ? 300 : ['storeName', 'keyword'].includes(key) ? 50 : undefined} disabled={key === 'startDate' && !canStart} value={draft[key]} onChange={(e) => { setDraft({ ...draft, [key]: e.target.value }); setPreview(null); setError('') }} /></label>)}
+      {fields.map(([key, label]) => <label className="correction-columns" key={key}><span>{label}</span><span className="correction-before">{String(order[key]) || '-'}</span>{key === 'startDate' ? <StartDateInput ariaLabel={`변경 후 ${label}`} restrictions={restrictions} originalDate={order.startDate} disabled={!canStart} value={draft.startDate} onChange={(value) => { setDraft({ ...draft, startDate: value }); setPreview(null); setError('') }} /> : <input aria-label={`변경 후 ${label}`} type={['dailyShots', 'operationDays'].includes(key) ? 'number' : 'text'} min={['dailyShots', 'operationDays'].includes(key) ? 1 : undefined} step={1} maxLength={key === 'memo' ? 300 : ['storeName', 'keyword'].includes(key) ? 50 : undefined} value={draft[key]} onChange={(e) => { setDraft({ ...draft, [key]: e.target.value }); setPreview(null); setError('') }} />}</label>)}
       <label className="field"><span>수정 사유 (2자 이상)</span><textarea value={reason} minLength={2} maxLength={500} onChange={(e) => { setReason(e.target.value); setPreview(null) }} /></label>
     </fieldset>
     <p className="muted">시작일은 아직 시작하지 않은 입금대기·입금완료 작업만 변경할 수 있습니다. 서버에서 상태와 최신 버전을 다시 확인합니다.</p>

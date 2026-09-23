@@ -1,3 +1,6 @@
+import { useStartDateRestrictions } from '../hooks/useStartDateRestrictions'
+import { StartDateRestrictionNotice } from '../components/StartDateInput'
+import { startDateRestrictionError, assertAllowedStartDates } from '../lib/startDateRestrictions'
 import { intakeWarning } from '../lib/orderCorrection'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Modal } from '../components/Modal'
@@ -12,6 +15,7 @@ export function AdminBulkOrderAssignmentModal({ onLoadMembers, onAssign, onClose
   onAssign: (rows: AdminAssignmentRow[], requestId: string) => Promise<AdminAssignmentResult[]>
   onClose: () => void
 }) {
+  const restrictions = useStartDateRestrictions()
   const [warningsAccepted, setWarningsAccepted] = useState(false)
   const [members, setMembers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,8 +31,10 @@ export function AdminBulkOrderAssignmentModal({ onLoadMembers, onAssign, onClose
   const resultMap = new Map(results.map((result) => [result.rowNumber, result]))
   const preview = rows.map((row) => {
     const member = memberMap.get(row.targetUsername)
-    return { row, member, errors: [...(row.parseError ? [row.parseError] : []), ...assignmentErrors(member, row.draft)] }
+    const blocked = resultMap.get(row.rowNumber)?.status === 'success' ? '' : startDateRestrictionError(row.draft.startDate, restrictions.rules)
+    return { row, member, blocked, errors: [...(row.parseError ? [row.parseError] : []), ...(blocked ? [blocked] : []), ...assignmentErrors(member, row.draft)] }
   })
+  const hasRestrictedRows = preview.some((item) => Boolean(item.blocked))
   const valid = preview.filter((item) => !item.errors.length)
   const pending = valid.filter((item) => resultMap.get(item.row.rowNumber)?.status !== 'success')
   const upload = async (file?: File) => {
@@ -37,9 +43,10 @@ export function AdminBulkOrderAssignmentModal({ onLoadMembers, onAssign, onClose
     catch (reason) { setError(assignmentErrorMessage(reason)); setRows([]); setResults([]) }
   }
   const submit = async () => {
-    if (submitting || !pending.length || (pending.some((item) => intakeWarning(item.row.draft)) && !warningsAccepted)) return
+    if (submitting || hasRestrictedRows || !pending.length || (pending.some((item) => intakeWarning(item.row.draft)) && !warningsAccepted)) return
     setSubmitting(true); setStarted(true); setError('')
     try {
+      await assertAllowedStartDates(pending.map((item) => item.row.draft), undefined, pending.map((item) => item.row.rowNumber))
       // Bounded requests: completed rows remain visible if a later request loses its response.
       for (let offset = 0; offset < pending.length; offset += 50) {
         const next = await onAssign(pending.slice(offset, offset + 50).map((item) => item.row), requestId)
@@ -48,8 +55,10 @@ export function AdminBulkOrderAssignmentModal({ onLoadMembers, onAssign, onClose
     } catch (reason) { setError(`${assignmentErrorMessage(reason)} 동일 요청을 다시 실행하면 완료된 주문은 중복 생성되지 않습니다.`) }
     finally { setSubmitting(false) }
   }
-  return <Modal title="엑셀 일괄 부여" description="관리자 전용 양식 · 최대 500건 · 정상 행만 실행하며 각 행의 결과를 확인할 수 있습니다." className="admin-assignment-modal assignment-bulk-modal" onClose={() => { if (!submitting) onClose() }} footer={<><button className="secondary-button" disabled={submitting} onClick={onClose}>닫기</button><button className="primary-button" disabled={loading || submitting || !pending.length || (pending.some((item) => intakeWarning(item.row.draft)) && !warningsAccepted)} onClick={() => void submit()}>{submitting ? '부여 중…' : `${started ? '미완료' : '정상'} ${pending.length}건 부여`}</button></>}>
-    <div className="assignment-file-actions"><button className="secondary-button small" onClick={downloadAssignmentTemplate}>관리자 양식 다운로드</button><button className="primary-button small" disabled={loading || submitting || started} onClick={() => fileRef.current?.click()}>엑셀 선택</button><input ref={fileRef} hidden type="file" accept=".xlsx,.xls" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void upload(file) }} /></div>
+  return <Modal title="엑셀 일괄 부여" description="관리자 전용 양식 · 최대 500건 · 제한 날짜가 포함되면 파일을 수정해야 합니다. 그 외 오류는 기존 행별 처리 기준을 따릅니다." className="admin-assignment-modal assignment-bulk-modal" onClose={() => { if (!submitting) onClose() }} footer={<><button className="secondary-button" disabled={submitting} onClick={onClose}>닫기</button><button className="primary-button" disabled={loading || submitting || hasRestrictedRows || !pending.length || (pending.some((item) => intakeWarning(item.row.draft)) && !warningsAccepted)} onClick={() => void submit()}>{submitting ? '부여 중…' : `${started ? '미완료' : '정상'} ${pending.length}건 부여`}</button></>}>
+    <StartDateRestrictionNotice state={restrictions} />
+    {hasRestrictedRows && <p className="form-error" role="alert">시작일 제한 오류가 있어 파일을 제출할 수 없습니다. 표시된 행을 수정한 뒤 엑셀을 다시 선택해 주세요.</p>}
+    <div className="assignment-file-actions"><button className="secondary-button small" onClick={downloadAssignmentTemplate}>관리자 양식 다운로드</button><button className="primary-button small" disabled={loading || submitting} onClick={() => { if (!started || window.confirm('이미 성공한 행을 제외한 파일만 다시 선택하세요. 새 파일은 새 요청으로 처리됩니다. 계속하시겠습니까?')) fileRef.current?.click() }}>엑셀 선택</button><input ref={fileRef} hidden type="file" accept=".xlsx,.xls" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void upload(file) }} /></div>
     <p className="muted">프로그램: 스파크 / 스파크+ / 스파크S / 스파크S+ (s 소문자 허용). 시작일은 익일부터 지정하세요.</p>
     {loading && <p role="status">회원 정보를 불러오는 중입니다.</p>}
     {error && <p className="assignment-errors" role="alert">{error}</p>}

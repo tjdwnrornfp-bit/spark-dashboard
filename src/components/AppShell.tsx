@@ -15,6 +15,7 @@ const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType
   { page: 'sparkSPlusOrders', label: '스파크S+ 접수', programType: 'spark_s_plus' },
   { page: 'settlement', label: '정산', icon: 'wallet' },
   { page: 'members', label: '회원관리', icon: 'users' },
+  { page: 'startDateRestrictions', label: '접수 제한 설정', icon: 'shield' },
   { page: 'operations', label: '운영기록', icon: 'shield' },
   { page: 'myinfo', label: '내 정보', icon: 'user' },
   { page: 'notices', label: '공지사항', icon: 'notice' },
@@ -43,7 +44,7 @@ export function AppShell({ user, page, unreadCount, serverMode, children, onNavi
     if (item.page === 'downlineOrders') return !user.isOperationsManager && (user.role === 'agency' || user.role === 'distributor')
     if (item.page === 'managedOrders') return user.isOperationsManager === true
     if (user.isOperationsManager) return MANAGER_PAGES.has(item.page)
-    if (item.page === 'operations') return user.role === 'admin'
+    if (item.page === 'operations' || item.page === 'startDateRestrictions') return user.role === 'admin'
     return true
   })
 

@@ -1,3 +1,5 @@
+import { StartDateRestrictionsPage } from './features/StartDateRestrictionsPage'
+import { assertAllowedStartDates } from './lib/startDateRestrictions'
 import { fetchNotificationCounts, markAllMyNotificationsRead } from './lib/performance'
 import { singleFlight, invalidateReadRequests } from './lib/singleFlight'
 import { RemoteNotificationsPage } from './features/RemoteNotificationsPage'
@@ -558,6 +560,7 @@ export default function App() {
 
   const handleOrderCorrection = async (order: Order, draft: CorrectionDraft, reason: string): Promise<Order> => {
     if (user?.role !== 'admin' || user.isOperationsManager) throw new Error('관리자만 수정할 수 있습니다.')
+    await assertAllowedStartDates([draft], order.startDate)
     const corrected = await applyRemoteOrderCorrection(order, draft, reason)
     setRemoteOrders((current) => current.map((item) => item.dbId === corrected.dbId ? corrected : item))
     setServerDataRevision((current) => current + 1)
@@ -567,6 +570,7 @@ export default function App() {
 
   const handleMemberOrderEdit = async (order: Order, draft: OrderDraft, reason: string): Promise<Order> => {
     if (!user || user.isOperationsManager || !['agency', 'distributor'].includes(user.role ?? '') || order.createdBy !== user.id) throw new Error('본인 작업만 수정할 수 있습니다.')
+    await assertAllowedStartDates([draft], order.startDate)
     const corrected = await applyRemoteMemberOrderEdit(order, draft, reason)
     setRemoteOrders((current) => current.map((item) => item.dbId === corrected.dbId ? corrected : item))
     setServerDataRevision((current) => current + 1)
@@ -578,6 +582,7 @@ export default function App() {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (user.isOperationsManager) throw new Error('중간관리자 계정은 작업을 접수할 수 없습니다.')
     if (isSupabaseConfigured) {
+      await assertAllowedStartDates([draft])
       const order = await createRemoteOrder({ programType: draft.programType, placeUrl: draft.placeUrl.trim(), mid: extractMid(draft.placeUrl), storeName: draft.storeName.trim(), keyword: draft.keyword.trim(), dailyShots: Number(draft.dailyShots), operationDays: Number(draft.operationDays), startDate: draft.startDate, memo: draft.memo.trim() })
       setRemoteOrders((current) => [...current.filter((item) => item.dbId !== order.dbId), order])
       void refreshOrderEffectsRemote(false).catch(() => undefined)
@@ -599,6 +604,7 @@ export default function App() {
     if (!user) throw new Error('로그인이 필요합니다.')
     if (user.isOperationsManager) throw new Error('중간관리자 계정은 작업을 접수할 수 없습니다.')
     if (isSupabaseConfigured) {
+      await assertAllowedStartDates(drafts)
       const created = await createRemoteOrdersBulk(drafts)
       setRemoteOrders((current) => {
         const dedup = new Map(current.map((order) => [order.dbId ?? order.id, order]))
@@ -1218,6 +1224,7 @@ export default function App() {
     {activeProgram && !user.isOperationsManager && <OrdersPage key={user.id} memberEditRefreshKey={serverDataRevision} onMemberEditPreview={previewRemoteMemberOrderEdit} onMemberEditApply={handleMemberOrderEdit} onCorrectionPreview={previewRemoteOrderCorrection} onCorrectionApply={handleOrderCorrection} onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {renderedPage === 'settlement' && !user.isOperationsManager && <SettlementPage key={user.id} user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {renderedPage === 'members' && <MembersPage key={user.id} user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
+    {renderedPage === 'startDateRestrictions' && user.role === 'admin' && !user.isOperationsManager && <StartDateRestrictionsPage key={user.id} user={user} />}
     {renderedPage === 'operations' && user.role === 'admin' && <OperationsPage user={user} />}
     {renderedPage === 'myinfo' && <MyInfoPage user={user} onPasswordChange={handlePasswordChange} onAccountChange={handleAccountChange} />}
     {renderedPage === 'notices' && <NoticesPage user={user} notices={notices} onCreate={handleNoticeCreate} onDelete={handleNoticeDelete} />}

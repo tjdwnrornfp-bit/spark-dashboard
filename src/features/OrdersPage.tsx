@@ -1,3 +1,6 @@
+import { useStartDateRestrictions } from '../hooks/useStartDateRestrictions'
+import { StartDateInput, StartDateRestrictionNotice } from '../components/StartDateInput'
+import { startDateRestrictionError, restrictedRowErrors, assertAllowedStartDates } from '../lib/startDateRestrictions'
 import { Pagination } from '../components/Pagination'
 import { useIsMobile } from '../hooks/useIsMobile'
 import { useRemoteRead } from '../hooks/useRemoteRead'
@@ -140,6 +143,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
   onArchiveOrder: (order: Order, reason: string) => Promise<void>
   onRestoreOrder: (order: Order, reason: string) => Promise<void>
 }) {
+  const restrictions = useStartDateRestrictions()
   const [memberEdit, setMemberEdit] = useState<{ order: Order; programOnly: boolean } | null>(null)
   const [eligibility, setEligibility] = useState<Map<string, number>>(new Map())
   const [eligibilityError, setEligibilityError] = useState('')
@@ -281,7 +285,9 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
 
   const openPreview = () => {
     if (unitPrice <= 0) { window.alert(`${programLabel} 단가가 설정된 승인 회원만 접수할 수 있습니다.`); return }
-    const nextErrors = validateDraft(draft, now)
+    const nextErrors = validateDraft(draft, now, restrictions.rules)
+    const blocked = startDateRestrictionError(draft.startDate, restrictions.rules)
+    if (blocked) nextErrors.startDate = blocked
     setErrors(nextErrors)
     if (Object.keys(nextErrors).length > 0) return
     const dailyShots = Number(draft.dailyShots)
@@ -419,10 +425,11 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
 
   const submitBulk = async () => {
     if (bulkDrafts.some((item) => intakeWarning(item)) && !bulkWarningsAccepted) return
-    if (bulkSubmitting || bulkDrafts.length === 0 || bulkErrors.length > 0) return
+    if (bulkSubmitting || bulkDrafts.length === 0 || bulkErrors.length > 0 || bulkPolicyErrors.length > 0) return
     if (unitPrice <= 0) { window.alert(`${programLabel} 단가가 설정된 승인 회원만 접수할 수 있습니다.`); return }
     setBulkSubmitting(true)
     try {
+      await assertAllowedStartDates(bulkDrafts, undefined, bulkRowNumbers)
       const created = await onCreateOrdersBulk(bulkDrafts)
       setBulkDrafts([])
       setBulkErrors([])
@@ -434,6 +441,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
     }
   }
 
+  const bulkPolicyErrors = restrictedRowErrors(bulkDrafts, restrictions.rules, bulkRowNumbers)
   const bulkAmount = bulkDrafts.reduce((sum, item) => sum + calculateAmount(Number(item.dailyShots) || 0, Number(item.operationDays) || 0, unitPrice).totalAmount, 0)
 
   return (
@@ -443,6 +451,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
         subtitle={user.role === 'admin' ? `${programLabel} 접수 작업과 상태를 관리합니다.` : `${programLabel} 작업을 개별 또는 엑셀로 대량 접수합니다.`}
         action={user.role !== 'admin' ? <div className="page-header-actions"><button className="secondary-button small" onClick={downloadBulkTemplate}><Icon name="download" />대량접수 양식</button><button className="secondary-button small" onClick={() => fileInputRef.current?.click()}><Icon name="upload" />대량작업접수</button><button className="primary-button small" onClick={toggleForm}><Icon name={formOpen ? 'close' : 'plus'} />{formOpen ? '접수 닫기' : '접수 신청'}</button><input ref={fileInputRef} className="hidden-file-input" type="file" accept=".xlsx,.xls" onChange={(event) => void readBulkFile(event)} /></div> : <div className="page-header-actions"><button className="primary-button small" onClick={() => setAssignmentMode('manual')}><Icon name="plus" />작업 부여</button><button className="secondary-button small" onClick={() => setAssignmentMode('excel')}><Icon name="upload" />엑셀 일괄 부여</button><button className="secondary-button small" onClick={() => void downloadExcel()}><Icon name="download" />선택 엑셀</button><button className="secondary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></div>}
       />
+      <StartDateRestrictionNotice state={restrictions} />
       {user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'manual' && <AdminOrderAssignmentModal programType={programType} onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminAssign} onClose={() => setAssignmentMode(null)} />}
       {user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'excel' && <AdminBulkOrderAssignmentModal onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminBulkAssign} onClose={() => setAssignmentMode(null)} />}
 
@@ -454,7 +463,7 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
           <Field label="대표 키워드" required error={errors.keyword}><input value={draft.keyword} onChange={(event) => updateDraft('keyword', event.target.value)} placeholder="대표 키워드 입력" maxLength={50} /></Field>
           <Field label="일일 구동 수량" required error={errors.dailyShots}><div className="input-unit"><input type="number" min="1" step="1" value={draft.dailyShots} onChange={(event) => updateDraft('dailyShots', event.target.value)} /><span>{quantityUnit}</span></div></Field>
           <Field label="구동 일수" required error={errors.operationDays}><div className="input-unit"><input type="number" min="1" step="1" value={draft.operationDays} onChange={(event) => updateDraft('operationDays', event.target.value)} /><span>일</span></div></Field>
-          <Field label="시작일" required error={errors.startDate}><input type="date" min={minimumStartDate} value={draft.startDate} onChange={(event) => updateDraft('startDate', event.target.value)} /></Field>
+          <Field label="시작일" required error={errors.startDate}><StartDateInput min={minimumStartDate} value={draft.startDate} restrictions={restrictions} onChange={(value) => updateDraft('startDate', value)} /></Field>
           <Field className="span-2" label="메모" error={errors.memo}><textarea value={draft.memo} onChange={(event) => updateDraft('memo', event.target.value)} maxLength={300} rows={3} /></Field>
         </div>
         <EstimateStrip unitPrice={unitPrice} programType={programType} draft={draft} settings={settings} now={now} />
@@ -489,9 +498,9 @@ export function OrdersPage({ memberEditRefreshKey, onMemberEditPreview, onMember
       {memberEdit && !user.isOperationsManager && <MemberOrderEditModal order={memberEdit.order} programOnly={memberEdit.programOnly} onPreview={onMemberEditPreview} onApply={onMemberEditApply} onClose={() => setMemberEdit(null)} />}
       {correctionOrder && user.role === 'admin' && !user.isOperationsManager && <AdminOrderCorrectionModal order={correctionOrder} onPreview={onCorrectionPreview} onApply={onCorrectionApply} onClose={() => setCorrectionOrder(null)} />}
       {bulkTransferOrders && user.role === 'admin' && <AdminBulkProgramTransferModal orders={bulkTransferOrders} onClose={() => setBulkTransferOrders(null)} onPreview={onBulkProgramTransferPreview} onTransfer={onBulkProgramTransfer} onFinished={finishBulkProgramTransfer} />}
-      {preview && <Modal title="접수 내용 확인" description="금액과 기간을 확인해 주세요." onClose={() => setPreview(null)} footer={<><button className="secondary-button" onClick={() => setPreview(null)}>수정하기</button><button className="primary-button" disabled={submitting} onClick={() => void submitOrder()}>{submitting ? '접수 중...' : intakeWarning(preview.draft) ? '확인 후 그대로 접수' : '접수 완료'}</button></>}>{intakeWarning(preview.draft) && <p className="intake-warning" role="alert">{intakeWarning(preview.draft)}</p>}<div className="preview-grid"><Summary label="프로그램" value={programLabel} /><Summary label="상호명" value={preview.draft.storeName} /><Summary label="MID" value={preview.mid} /><Summary label="대표 키워드" value={preview.draft.keyword} /><Summary label="일일 수량" value={`${Number(preview.draft.dailyShots).toLocaleString('ko-KR')}${quantityUnit}`} /><Summary label="구동 기간" value={`${preview.startDate} ~ ${preview.endDate}`} wide /><Summary label={unitPriceLabel} value={formatWon(unitPrice)} /><Summary label="공급가액" value={formatWon(preview.supplyAmount)} /><Summary label="부가세" value={formatWon(preview.vatAmount)} /><Summary label="최종 결제금액" value={formatWon(preview.totalAmount)} strong /></div></Modal>}
+      {preview && <Modal title="접수 내용 확인" description="금액과 기간을 확인해 주세요." onClose={() => setPreview(null)} footer={<><button className="secondary-button" onClick={() => setPreview(null)}>수정하기</button><button className="primary-button" disabled={submitting || Boolean(startDateRestrictionError(preview.draft.startDate, restrictions.rules))} onClick={() => void submitOrder()}>{submitting ? '접수 중...' : intakeWarning(preview.draft) ? '확인 후 그대로 접수' : '접수 완료'}</button></>}><StartDateRestrictionNotice state={restrictions} />{intakeWarning(preview.draft) && <p className="intake-warning" role="alert">{intakeWarning(preview.draft)}</p>}<div className="preview-grid"><Summary label="프로그램" value={programLabel} /><Summary label="상호명" value={preview.draft.storeName} /><Summary label="MID" value={preview.mid} /><Summary label="대표 키워드" value={preview.draft.keyword} /><Summary label="일일 수량" value={`${Number(preview.draft.dailyShots).toLocaleString('ko-KR')}${quantityUnit}`} /><Summary label="구동 기간" value={`${preview.startDate} ~ ${preview.endDate}`} wide /><Summary label={unitPriceLabel} value={formatWon(unitPrice)} /><Summary label="공급가액" value={formatWon(preview.supplyAmount)} /><Summary label="부가세" value={formatWon(preview.vatAmount)} /><Summary label="최종 결제금액" value={formatWon(preview.totalAmount)} strong /></div></Modal>}
       {createdOrder && <Modal title="접수가 완료되었습니다." onClose={() => setCreatedOrder(null)} footer={<button className="primary-button" onClick={() => setCreatedOrder(null)}>확인</button>}><div className="success-box"><Icon name="check" size={24} /><div><strong>{createdOrder.storeName}</strong><p>{programLabel} 작업이 입금대기 상태로 접수되었습니다.</p></div></div></Modal>}
-      {bulkDrafts.length > 0 && <Modal title="대량 작업 접수 확인" description="검증 오류가 없을 때 전체 작업이 한 번에 접수됩니다." onClose={() => { setBulkDrafts([]); setBulkErrors([]) }} footer={<><button className="secondary-button" onClick={() => { setBulkDrafts([]); setBulkErrors([]) }}>취소</button><button className="primary-button" disabled={bulkSubmitting || bulkErrors.length > 0 || (bulkDrafts.some((item) => intakeWarning(item)) && !bulkWarningsAccepted)} onClick={() => void submitBulk()}>{bulkSubmitting ? '접수 중...' : `${bulkDrafts.length}건 접수`}</button></>}><div className="intake-warnings">{bulkDrafts.map((item, index) => intakeWarning(item) && <p className="intake-warning" key={index}>{bulkRowNumbers[index] ?? index + 2}행: {intakeWarning(item)}</p>)}{bulkDrafts.some((item) => intakeWarning(item)) && <label><input type="checkbox" checked={bulkWarningsAccepted} onChange={(e) => setBulkWarningsAccepted(e.target.checked)} />경고 행의 수량·기간을 확인했으며 그대로 접수합니다.</label>}</div><div className="bulk-preview-summary"><div><span>작업 수</span><strong>{bulkDrafts.length.toLocaleString('ko-KR')}건</strong></div><div><span>총 결제금액</span><strong>{formatWon(bulkAmount)}</strong></div></div>{bulkErrors.length > 0 ? <div className="bulk-error-list"><strong>수정이 필요한 항목 {bulkErrors.length}개</strong>{bulkErrors.slice(0, 20).map((message) => <p key={message}>{message}</p>)}{bulkErrors.length > 20 && <p>외 {bulkErrors.length - 20}개</p>}</div> : <div className="success-notice">모든 행의 URL, MID, 수량, 기간과 시작일 검증을 통과했습니다.</div>}</Modal>}
+      {bulkDrafts.length > 0 && <Modal title="대량 작업 접수 확인" description="검증 오류가 없을 때 전체 작업이 한 번에 접수됩니다." onClose={() => { setBulkDrafts([]); setBulkErrors([]) }} footer={<><button className="secondary-button" onClick={() => { setBulkDrafts([]); setBulkErrors([]) }}>취소</button><button className="primary-button" disabled={bulkSubmitting || bulkErrors.length > 0 || bulkPolicyErrors.length > 0 || (bulkDrafts.some((item) => intakeWarning(item)) && !bulkWarningsAccepted)} onClick={() => void submitBulk()}>{bulkSubmitting ? '접수 중...' : `${bulkDrafts.length}건 접수`}</button></>}><StartDateRestrictionNotice state={restrictions} />{bulkPolicyErrors.length > 0 && <div className="bulk-error-list" role="alert"><strong>시작일 제한 오류 {bulkPolicyErrors.length}건 · 파일을 수정한 뒤 다시 선택해 주세요.</strong>{bulkPolicyErrors.slice(0, 20).map((message) => <p key={message}>{message}</p>)}{bulkPolicyErrors.length > 20 && <p>외 {bulkPolicyErrors.length - 20}건</p>}</div>}<div className="intake-warnings">{bulkDrafts.map((item, index) => intakeWarning(item) && <p className="intake-warning" key={index}>{bulkRowNumbers[index] ?? index + 2}행: {intakeWarning(item)}</p>)}{bulkDrafts.some((item) => intakeWarning(item)) && <label><input type="checkbox" checked={bulkWarningsAccepted} onChange={(e) => setBulkWarningsAccepted(e.target.checked)} />경고 행의 수량·기간을 확인했으며 그대로 접수합니다.</label>}</div><div className="bulk-preview-summary"><div><span>작업 수</span><strong>{bulkDrafts.length.toLocaleString('ko-KR')}건</strong></div><div><span>총 결제금액</span><strong>{formatWon(bulkAmount)}</strong></div></div>{bulkErrors.length > 0 ? <div className="bulk-error-list"><strong>수정이 필요한 항목 {bulkErrors.length}개</strong>{bulkErrors.slice(0, 20).map((message) => <p key={message}>{message}</p>)}{bulkErrors.length > 20 && <p>외 {bulkErrors.length - 20}개</p>}</div> : bulkPolicyErrors.length === 0 && <div className="success-notice">모든 행의 URL, MID, 수량, 기간과 시작일 검증을 통과했습니다.</div>}</Modal>}
     </div>
   )
 }

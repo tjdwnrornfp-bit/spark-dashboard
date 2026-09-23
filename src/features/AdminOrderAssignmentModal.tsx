@@ -1,3 +1,6 @@
+import { useStartDateRestrictions } from '../hooks/useStartDateRestrictions'
+import { StartDateInput, StartDateRestrictionNotice } from '../components/StartDateInput'
+import { startDateRestrictionError, assertAllowedStartDates } from '../lib/startDateRestrictions'
 import { intakeWarning } from '../lib/orderCorrection'
 import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/Modal'
@@ -13,6 +16,7 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
   onAssign: (member: User, draft: OrderDraft, requestId: string) => Promise<Order>
   onClose: () => void
 }) {
+  const restrictions = useStartDateRestrictions()
   const [warningAccepted, setWarningAccepted] = useState(false)
   const [members, setMembers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -32,18 +36,21 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
   const amount = calculateAmount(Number(draft.dailyShots) || 0, Number(draft.operationDays) || 0, price)
   const edit = (field: keyof OrderDraft, value: string) => { setWarningAccepted(false); setDraft((current) => ({ ...current, [field]: value })); setRequestId(crypto.randomUUID()); setErrors([]) }
   const submit = async () => {
-    const nextErrors = assignmentErrors(member, draft)
+    const blocked = uncertain ? '' : startDateRestrictionError(draft.startDate, restrictions.rules)
+    const nextErrors = [...assignmentErrors(member, draft), ...(blocked ? [blocked] : [])]
     setErrors(nextErrors)
     if (!member || nextErrors.length || submitting || (intakeWarning(draft) && !warningAccepted)) return
     setSubmitting(true)
     try {
+      if (!uncertain) await assertAllowedStartDates([draft])
       const order = await onAssign(member, draft, requestId)
       window.alert(`${member.username} 회원에게 ${order.id} 작업을 부여했습니다. 적용단가 ${formatWon(order.pricePerShot)}`)
       onClose()
     } catch (error) { setErrors([assignmentErrorMessage(error), '응답을 받지 못했다면 같은 내용으로 다시 확인할 수 있습니다. 이미 생성된 주문은 중복 생성되지 않습니다.']); setUncertain(true) }
     finally { setSubmitting(false) }
   }
-  return <Modal title="작업 부여" description="선택한 회원의 승인 단가로 작업과 정산 내역을 생성합니다." className="admin-assignment-modal" onClose={() => { if (!submitting) onClose() }} footer={<><button className="secondary-button" disabled={submitting} onClick={onClose}>닫기</button><button className="primary-button" disabled={loading || submitting || !member || price <= 0 || Boolean(intakeWarning(draft) && !warningAccepted)} onClick={() => void submit()}>{submitting ? '부여 중…' : uncertain ? '동일 요청 결과 확인' : '작업 부여'}</button></>}>
+  return <Modal title="작업 부여" description="선택한 회원의 승인 단가로 작업과 정산 내역을 생성합니다." className="admin-assignment-modal" onClose={() => { if (!submitting) onClose() }} footer={<><button className="secondary-button" disabled={submitting} onClick={onClose}>닫기</button><button className="primary-button" disabled={loading || submitting || (!uncertain && Boolean(startDateRestrictionError(draft.startDate, restrictions.rules))) || !member || price <= 0 || Boolean(intakeWarning(draft) && !warningAccepted)} onClick={() => void submit()}>{submitting ? '부여 중…' : uncertain ? '동일 요청 결과 확인' : '작업 부여'}</button></>}>
+    <StartDateRestrictionNotice state={restrictions} />
     {loading && <p role="status">회원 정보를 불러오는 중입니다.</p>}
     <fieldset className="assignment-fields" disabled={loading || submitting || uncertain}>
       <div className="form-grid compact-form">
@@ -57,7 +64,7 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
         <label className="field span-2"><span>플레이스 URL *</span><input value={draft.placeUrl} onChange={(event) => edit('placeUrl', event.target.value)} placeholder="https://m.place.naver.com/place/1234567890/home" /></label>
         <label className="field"><span>일일수량 *</span><input type="number" min="1" step="1" value={draft.dailyShots} onChange={(event) => edit('dailyShots', event.target.value)} /></label>
         <label className="field"><span>구동일수 *</span><input type="number" min="1" step="1" value={draft.operationDays} onChange={(event) => edit('operationDays', event.target.value)} /></label>
-        <label className="field"><span>시작일 *</span><input type="date" min={earliestOrderStartDate()} value={draft.startDate} onChange={(event) => edit('startDate', event.target.value)} /></label>
+        <label className="field"><span>시작일 *</span><StartDateInput restrictions={restrictions} min={earliestOrderStartDate()} value={draft.startDate} onChange={(value) => edit('startDate', value)} /></label>
         <label className="field span-2"><span>메모</span><textarea maxLength={300} value={draft.memo} onChange={(event) => edit('memo', event.target.value)} /></label>
       </div>
     </fieldset>
