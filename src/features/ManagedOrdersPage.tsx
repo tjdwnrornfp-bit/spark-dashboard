@@ -1,3 +1,4 @@
+import { managerScopeMembers } from '../lib/managerScope'
 import { selectRowRange } from '../lib/rowSelection'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
@@ -50,14 +51,14 @@ function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode,
 
   useEffect(() => {
     if (!serverMode) {
-      setAgencyOptions(members.filter((member) => member.managerId === user.id).map((member) => ({ id: member.id, username: member.username })).sort((a, b) => a.username.localeCompare(b.username, 'ko-KR')))
+      setAgencyOptions(managerScopeMembers(user, members).map((member) => ({ id: member.id, username: member.username })).sort((a, b) => a.username.localeCompare(b.username, 'ko-KR')))
       return
     }
     let active = true
     void fetchManagedOrderFilterOptionsV102().then((options) => {
       if (active) setAgencyOptions(options)
     }).catch((caught) => {
-      if (active) setError(caught instanceof Error ? caught.message : '대행사 목록을 불러오지 못했습니다.')
+      if (active) { setAgencyOptions([]); setError(caught instanceof Error ? caught.message : '대행사 목록을 불러오지 못했습니다.') }
     })
     return () => { active = false }
   }, [members, refreshKey, serverMode, user.id])
@@ -127,7 +128,7 @@ function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode,
 
   return (
     <div className="page-stack managed-orders-page-stack">
-      <PageHeader title="관리 작업" subtitle="현재 내 관리 담당으로 배정된 대행사의 과거·현재 작업과 정산 상태를 읽기 전용으로 확인합니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={selected.size === 0 || exporting || loading} onClick={exportSelected}><Icon name="download" />선택 엑셀 ({selected.size.toLocaleString('ko-KR')})</button><button className="primary-button" disabled={!result?.totalCount || exporting || loading} onClick={() => void exportAllFiltered()}><Icon name="download" />{exporting ? '전체 조회 중' : '필터 전체 엑셀'}</button></div>} />
+      <PageHeader title="관리 작업" subtitle="현재 담당 대행사와 하위 계층의 작업·정산을 확인합니다. 다른 중간관리자에게 별도 배정된 계층은 제외합니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={selected.size === 0 || exporting || loading} onClick={exportSelected}><Icon name="download" />선택 엑셀 ({selected.size.toLocaleString('ko-KR')})</button><button className="primary-button" disabled={!result?.totalCount || exporting || loading} onClick={() => void exportAllFiltered()}><Icon name="download" />{exporting ? '전체 조회 중' : '필터 전체 엑셀'}</button></div>} />
       <section className="panel compact-panel managed-orders-filter-panel">
         <div className="managed-status-chips" aria-label="작업상태 빠른 필터">{(['all', 'in_progress', '입금대기', '입금완료', '구동중', '정지', '만료'] as const).map((status) => <button key={status} className="secondary-button small" aria-pressed={filters.orderStatus === status} onClick={() => updateFilter('orderStatus', status)}>{status === 'all' ? '전체' : status === 'in_progress' ? '진행중(입금대기+입금완료)' : status}</button>)}</div>
         <div className="managed-orders-filter-grid">

@@ -1,7 +1,7 @@
 {
   "name": "spark-work-intake-dashboard",
   "private": true,
-  "version": "10.12.0",
+  "version": "10.13.0",
   "type": "module",
   "scripts": {
     "test:admin-date": "node tests/admin-order-date.mjs",
@@ -19,7 +19,8 @@
     "test": "node tests/run-all.mjs",
     "verify": "npm test && npm run build",
     "test:start-date-restrictions": "node tests/start-date-restrictions.mjs && node tests/start-date-restrictions-client.mjs",
-    "test:manager-intake": "node tests/manager-intake-datetime.mjs"
+    "test:manager-intake": "node tests/manager-intake-datetime.mjs",
+    "test:manager-scope": "node tests/manager-scope.mjs && node tests/manager-scope-client.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.102.0",
