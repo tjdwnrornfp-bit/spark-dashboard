@@ -1,3 +1,4 @@
+import { managerScopeMembers } from './managerScope'
 import type {User,Order,PaymentStep,ManagedOrderFilters,ManagedOrderRow,ManagedOrdersPageResult} from '../domain/types'
 const PAGE_SIZE = 50
 export const EMPTY_FILTERS: ManagedOrderFilters = {
@@ -12,7 +13,7 @@ export const EMPTY_FILTERS: ManagedOrderFilters = {
 }
 
 export function localManagedRows(user: User, members: User[], orders: Order[], paymentSteps: PaymentStep[]): ManagedOrderRow[] {
-  const usernames = new Map(members.filter((member) => member.managerId === user.id).map((member) => [member.id, member.username]))
+  const usernames = new Map(managerScopeMembers(user, members).map((member) => [member.id, member.username]))
   return orders.filter((order) => !order.archivedAt && usernames.has(order.createdBy)).map((order) => {
     const orderKeys = new Set([order.dbId ?? order.id, order.id])
     const steps = paymentSteps.filter((step) => orderKeys.has(step.orderDbId))

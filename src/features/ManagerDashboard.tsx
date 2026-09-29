@@ -1,3 +1,4 @@
+import { managerScopeMembers } from '../lib/managerScope'
 import { useEffect, useMemo, useState } from 'react'
 import { Icon } from '../components/Icon'
 import type {
@@ -29,7 +30,7 @@ function directSettlement(order: Order, paymentSteps: PaymentStep[]) {
 }
 
 function localDashboardData(user: User, members: User[], orders: Order[], paymentSteps: PaymentStep[]) {
-  const managed = members.filter((member) => member.managerId === user.id)
+  const managed = managerScopeMembers(user, members)
   const managedIds = new Set(managed.map((member) => member.id))
   const activeOrders = orders.filter((order) => !order.archivedAt && managedIds.has(order.createdBy))
   const financials = new Map(activeOrders.map((order) => [order.dbId ?? order.id, directSettlement(order, paymentSteps)]))
@@ -124,7 +125,7 @@ export function ManagerDashboard({ user, members, orders, paymentSteps, notices,
       setServerSummary(result)
       setSummaryError('')
     }).catch(() => {
-      if (active) setSummaryError('운영·정산 요약을 불러오지 못했습니다.')
+      if (active) { setServerSummary(null); setSummaryError('운영·정산 요약을 불러오지 못했습니다.') }
     })
     return () => { active = false }
   }, [refreshKey, serverMode, user.id])
@@ -138,7 +139,7 @@ export function ManagerDashboard({ user, members, orders, paymentSteps, notices,
       setOverviewError('')
       if (result.page > result.totalPages) setPage(result.totalPages)
     }).catch(() => {
-      if (active) setOverviewError('대행사별 현황을 불러오지 못했습니다.')
+      if (active) { setServerOverview(null); setOverviewError('대행사별 현황을 불러오지 못했습니다.') }
     })
     return () => { active = false }
   }, [page, query, refreshKey, serverMode, sort, user.id])
@@ -157,11 +158,11 @@ export function ManagerDashboard({ user, members, orders, paymentSteps, notices,
 
   return (
     <div className="page-stack dashboard-page-stack manager-dashboard-stack">
-      <header className="page-header"><div><h1>대시보드</h1><p>{user.username} 중간관리자 계정의 운영 및 정산 현황입니다.</p></div><button className="primary-button" onClick={() => onOpenManagedOrders()}><Icon name="orders" />관리 작업 보기</button></header>
+      <header className="page-header"><div><h1>대시보드</h1><p>{user.username} 중간관리자 담당 대행사와 하위 계층의 운영 및 정산 현황입니다.</p></div><button className="primary-button" onClick={() => onOpenManagedOrders()}><Icon name="orders" />관리 작업 보기</button></header>
       {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
 
       <section className="manager-dashboard-kpis" aria-label="관리 운영 핵심 지표">
-        <article><span>관리 대행사 수</span><strong>{count(summary?.managedAgencyCount, '명')}</strong></article>
+        <article><span>관리 대행사 수 (하위 포함)</span><strong>{count(summary?.managedAgencyCount, '명')}</strong></article>
         <article><span>전체 작업 수</span><strong>{count(summary?.totalOrderCount, '건')}</strong></article>
         <article><span>총 정산금액</span><strong>{value(summary?.totalSettlementAmount)}</strong></article>
         <article className="waiting"><span>정산대기 금액</span><strong>{value(summary?.settlementWaitingAmount)}</strong></article>

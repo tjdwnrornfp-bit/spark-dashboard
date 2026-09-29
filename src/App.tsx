@@ -1,3 +1,4 @@
+import { useManagerReadRevision } from './hooks/useManagerReadRevision'
 import { StartDateRestrictionsPage } from './features/StartDateRestrictionsPage'
 import { assertAllowedStartDates } from './lib/startDateRestrictions'
 import { fetchNotificationCounts, markAllMyNotificationsRead } from './lib/performance'
@@ -210,6 +211,12 @@ export default function App() {
 
   const localUser = useMemo(() => localMembers.find((member) => member.id === localSessionUserId && member.approvalStatus === 'approved' && member.active && member.role !== null) ?? null, [localMembers, localSessionUserId])
   const user = isSupabaseConfigured ? remoteUser : localUser
+  const invalidateManagerReads = useCallback(() => {
+    invalidateReadRequests()
+    setServerDataRevision(current => current + 1)
+  }, [])
+  useManagerReadRevision(user?.id, isSupabaseConfigured && user?.isOperationsManager === true
+    && (page === 'dashboard' || page === 'managedOrders'), invalidateManagerReads)
   const members = isSupabaseConfigured ? remoteMembers : localMembers
   const sourceOrders = isSupabaseConfigured ? remoteOrders : localOrders
   const orders = useMemo(() => {

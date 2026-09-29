@@ -1,3 +1,4 @@
+import { managerScopeMembers } from '../lib/managerScope'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { Dispatch, SetStateAction } from 'react'
 import type { AgencyFolder, AgencyFoldersResult, AgencyFolderSort, ManagedOrderFilters, ManagedOrderRow, ManagedOrdersPageResult, ManagedOrdersPreset, Order, PaymentStep, User } from '../domain/types'
@@ -56,7 +57,7 @@ export function AgencyFolderPanel({ agency, open, toggle, globalFilters, selecte
       setResult(next)
       if (next.page !== page) setPage(next.page)
       setSelected(current => { const updated = new Map(current); next.rows.forEach(row => { if (updated.has(row.orderId)) updated.set(row.orderId, row) }); return updated })
-    }).catch(e => { if (active) setError(errorMessage(e)) }).finally(() => { if (active) setLoading(false) })
+    }).catch(e => { if (active) { setResult(null); setError(errorMessage(e)) } }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [open, requestKey, filters, page, serverMode, localRows, setSelected, loadPage])
   const rows = result?.rows ?? []
@@ -112,7 +113,7 @@ function demoFolders(user: User, members: User[], rows: ManagedOrderRow[], steps
   const matching = filterLocalRows(rows, filters)
   const query = filters.query.trim().toLocaleLowerCase('ko-KR')
   const hasOrderFilter = filters.programType !== 'all' || filters.orderStatus !== 'all' || filters.settlementStatus !== 'all' || filters.startDateFrom || filters.startDateTo
-  const agencies: AgencyFolder[] = members.filter(m => m.managerId === user.id && (!filters.agencyId || m.id === filters.agencyId)).map(m => {
+  const agencies: AgencyFolder[] = managerScopeMembers(user, members).filter(m => !filters.agencyId || m.id === filters.agencyId).map(m => {
     const own = rows.filter(r => r.registrantId === m.id)
     let waiting = 0, completed = 0
     own.forEach(r => {
@@ -160,7 +161,7 @@ export function AgencyFoldersPage({ user, members, orders, paymentSteps, serverM
     void (serverMode ? fetchAgencyFoldersV1010(filters, page, sort) : Promise.resolve(demoFolders(user, members, localRows, paymentSteps, filters, page, sort))).then(next => {
       if (!active) return
       setResult(next); if (next.page !== page) setPage(next.page)
-    }).catch(e => { if (active) setError(errorMessage(e)) }).finally(() => { if (active) setLoading(false) })
+    }).catch(e => { if (active) { setResult(null); setError(errorMessage(e)) } }).finally(() => { if (active) setLoading(false) })
     return () => { active = false }
   }, [filters, page, sort, serverMode, refreshKey, retry, user, members, localRows, paymentSteps])
   const update = <K extends keyof ManagedOrderFilters>(key: K, value: ManagedOrderFilters[K]) => { setFilters(f => ({ ...f, [key]: value })); setPage(1) }
@@ -177,7 +178,7 @@ export function AgencyFoldersPage({ user, members, orders, paymentSteps, serverM
   }
   const cacheKey = JSON.stringify([filters, user.id])
   return <div className="page-stack managed-orders-page-stack">
-    <PageHeader title="관리 작업" subtitle="대행사 폴더를 열어 작업을 확인하세요. 중간관리자는 읽기 전용입니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={!selected.size || exporting || loading} onClick={() => downloadManagedOrdersExcel([...selected.values()], `관리작업_선택_${excelDateSuffix()}.xlsx`)}>선택 엑셀 ({selected.size})</button><button className="primary-button" disabled={exporting || loading || !result?.agencyCount} onClick={() => void exportFiltered()}>{exporting ? '전체 조회 중…' : '필터 전체 엑셀'}</button></div>} />
+    <PageHeader title="관리 작업" subtitle="담당 대행사와 하위 계층을 포함합니다. 각 폴더는 해당 대행사가 직접 접수한 작업이며 읽기 전용입니다." action={<div className="page-header-actions"><button className="secondary-button" disabled={!selected.size || exporting || loading} onClick={() => downloadManagedOrdersExcel([...selected.values()], `관리작업_선택_${excelDateSuffix()}.xlsx`)}>선택 엑셀 ({selected.size})</button><button className="primary-button" disabled={exporting || loading || !result?.agencyCount} onClick={() => void exportFiltered()}>{exporting ? '전체 조회 중…' : '필터 전체 엑셀'}</button></div>} />
     <section className="panel compact-panel managed-orders-filter-panel">
       <StatusFilters value={filters.orderStatus} onChange={s => update('orderStatus', s)} />
       <div className="managed-orders-filter-grid">
@@ -193,11 +194,11 @@ export function AgencyFoldersPage({ user, members, orders, paymentSteps, serverM
       {filters.agencyId && <button className="text-button" onClick={() => update('agencyId', '')}>선택 대행사만 표시 중 · 모든 대행사 보기</button>}
     </section>
     <div className="selection-summary"><span>{selected.size}개 선택됨 · 폴더를 닫아도 선택은 유지됩니다.</span><button className="text-button" disabled={!selected.size} onClick={() => setSelected(new Map())}>선택 해제</button></div>
-    <p className="agency-folder-help">폴더 요약은 보관 제외 전체 작업 기준입니다. 진행중 = 입금대기 + 입금완료. ‘조건 일치’는 상단 필터 기준이며 필터 전체 엑셀도 같은 기준입니다.</p>
+    <p className="agency-folder-help">다른 중간관리자에게 별도 배정된 계층은 제외합니다. 폴더 요약은 보관 제외 전체 작업 기준입니다. 진행중 = 입금대기 + 입금완료. ‘조건 일치’는 상단 필터 기준이며 필터 전체 엑셀도 같은 기준입니다.</p>
     {error && <div className="server-error-banner" role="alert"><span>{error}</span><button onClick={() => setRetry(n => n + 1)}>다시 불러오기</button></div>}
     {loading && <p role="status">대행사 목록을 불러오는 중…</p>}
     {!loading && !error && !result?.agencies.length && <div className="panel empty-state">조건에 맞는 대행사가 없습니다.</div>}
-    {result?.agencies.map(agency => <AgencyFolderPanel key={`${cacheKey}:${agency.agencyId}`} agency={agency} open={open.has(agency.agencyId)} toggle={() => setOpen(current => { const next = new Set(current); if (next.has(agency.agencyId)) next.delete(agency.agencyId); else next.add(agency.agencyId); return next })} globalFilters={filters} selected={selected} setSelected={setSelected} serverMode={serverMode} localRows={localRows} />)}
+    {result?.agencies.map(agency => <AgencyFolderPanel key={`${cacheKey}:${agency.agencyId}`} agency={agency} open={open.has(agency.agencyId)} toggle={() => setOpen(current => { const next = new Set(current); if (next.has(agency.agencyId)) next.delete(agency.agencyId); else next.add(agency.agencyId); return next })} globalFilters={filters} selected={selected} setSelected={setSelected} serverMode={serverMode} localRows={localRows} refreshKey={refreshKey} />)}
     <div className="panel"><div className="managed-orders-result-head">대행사 {result?.agencyCount ?? 0}개 · 페이지당 20개</div><Pagination page={result?.page ?? page} totalPages={result?.totalPages ?? 1} loading={loading} onChange={setPage} label="대행사 폴더 페이지" /></div>
   </div>
 }
