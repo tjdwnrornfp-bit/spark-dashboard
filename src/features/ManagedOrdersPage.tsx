@@ -146,7 +146,7 @@ function AllManagedOrdersPage({ user, members, orders, paymentSteps, serverMode,
       <div className="selection-summary"><span>{selected.size}개 선택됨 · Shift 범위 선택은 현재 페이지 내에서 적용됩니다.</span><button className="text-button" disabled={!selected.size} onClick={() => { setSelected(new Map()); anchor.current = null }}>선택 해제</button></div>
       <section className="panel managed-orders-panel">
         <div className="managed-orders-result-head"><div><strong>{(result?.totalCount ?? 0).toLocaleString('ko-KR')}건</strong><span>읽기 전용 · 상태 변경 및 입금확인은 관리자만 가능</span></div>{loading && <span>불러오는 중...</span>}</div>
-        {rows.length === 0 && !loading ? <div className="empty-state fill-empty-state">조건에 맞는 관리 작업이 없습니다.</div> : <ManagedOrdersTable rows={rows} selected={selected} loading={loading} toggleRow={toggleRow} toggleCurrentPage={toggleCurrentPage} />}
+        {rows.length === 0 && !loading ? <div className="empty-state fill-empty-state">조건에 맞는 관리 작업이 없습니다.</div> : <ManagedOrdersTable showCreatedAt rows={rows} selected={selected} loading={loading} toggleRow={toggleRow} toggleCurrentPage={toggleCurrentPage} />}
         <div className="managed-orders-pagination"><button className="secondary-button small" disabled={loading || (result?.page ?? 1) <= 1} onClick={() => setPage((current) => Math.max(1, current - 1))}>이전</button><span>{(result?.page ?? 1).toLocaleString('ko-KR')} / {(result?.totalPages ?? 1).toLocaleString('ko-KR')} 페이지</span><button className="secondary-button small" disabled={loading || (result?.page ?? 1) >= (result?.totalPages ?? 1)} onClick={() => setPage((current) => current + 1)}>다음</button></div>
       </section>
     </div>
