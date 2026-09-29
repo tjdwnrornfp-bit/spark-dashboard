@@ -18,7 +18,8 @@
     "test:performance": "node tests/performance-reads.mjs && node tests/performance-client.mjs",
     "test": "node tests/run-all.mjs",
     "verify": "npm test && npm run build",
-    "test:start-date-restrictions": "node tests/start-date-restrictions.mjs && node tests/start-date-restrictions-client.mjs"
+    "test:start-date-restrictions": "node tests/start-date-restrictions.mjs && node tests/start-date-restrictions-client.mjs",
+    "test:manager-intake": "node tests/manager-intake-datetime.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.102.0",

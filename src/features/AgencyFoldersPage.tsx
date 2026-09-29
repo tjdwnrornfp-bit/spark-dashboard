@@ -102,7 +102,7 @@ export function AgencyFolderPanel({ agency, open, toggle, globalFilters, selecte
       <div className="agency-folder-actions"><OrderSort value={sort} onChange={s => { setSort(s); setPage(1) }} /><button className="secondary-button small" disabled={busy || loading} onClick={() => void agencyAction('select')}>이 대행사 전체 선택</button><button className="secondary-button small" disabled={busy || !selectedCount} onClick={() => setSelected(current => new Map([...current].filter(([, r]) => r.registrantId !== agency.agencyId)))}>이 대행사 선택 해제</button><button className="secondary-button small" disabled={busy || loading} onClick={() => void agencyAction('export')}>이 대행사 엑셀</button>{busy && <span role="status">전체 페이지 조회 중…</span>}</div>
       <p className="agency-folder-help">전체 선택·엑셀은 이 폴더의 현재 검색·필터 조건에 맞는 모든 페이지에 적용됩니다. Shift 선택은 이 폴더의 현재 페이지에 적용됩니다.</p>
       {error && <div className="server-error-banner" role="alert"><span>{error}</span><button onClick={() => { cache.current = null; setRetry(n => n + 1) }}>다시 불러오기</button></div>}
-      {loading ? <p role="status">작업을 불러오는 중…</p> : !error && !rows.length ? <div className="empty-state">조건에 맞는 작업이 없습니다.</div> : <ManagedOrdersTable rows={rows} selected={selected} loading={loading} toggleRow={toggleRow} toggleCurrentPage={togglePage} />}
+      {loading ? <p role="status">작업을 불러오는 중…</p> : !error && !rows.length ? <div className="empty-state">조건에 맞는 작업이 없습니다.</div> : <ManagedOrdersTable showCreatedAt={!downline} rows={rows} selected={selected} loading={loading} toggleRow={toggleRow} toggleCurrentPage={togglePage} />}
       <Pagination page={result?.page ?? page} totalPages={result?.totalPages ?? 1} loading={loading} onChange={setPage} label={`${agency.username} 작업 페이지`} />
     </div>
   </section>
