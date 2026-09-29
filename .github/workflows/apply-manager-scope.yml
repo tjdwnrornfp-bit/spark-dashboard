@@ -1,0 +1,44 @@
+name: Verify manager descendant scope patch
+on:
+  push:
+    branches: [fix/manager-descendant-scope-v10-13]
+    paths: ['.ci/manager-scope.*', '.github/workflows/apply-manager-scope.yml']
+permissions:
+  contents: write
+concurrency:
+  group: manager-descendant-scope-patch
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Decode and check exact reviewed patch
+        run: |
+          cat .ci/manager-scope.000 .ci/manager-scope.001 .ci/manager-scope.002 | base64 --decode | xz --decompress > /tmp/manager-scope.patch
+          echo 'a750e7f7a010fdb01aa901db9ab61823d404ce3c6608c4fe79317774790606ea  /tmp/manager-scope.patch' | sha256sum -c -
+          git apply --check /tmp/manager-scope.patch
+          git apply /tmp/manager-scope.patch
+      - run: npm ci
+      - name: All existing and new tests plus production build
+        run: |
+          set -o pipefail
+          npm run verify 2>&1 | tee /tmp/manager-scope-verification.log
+      - name: Commit verified files to the feature branch only
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add APPLY_V10_13.md package.json package-lock.json src/App.tsx src/features/AgencyFoldersPage.tsx src/features/ManagedOrdersPage.tsx src/features/ManagerDashboard.tsx src/hooks/useManagerReadRevision.ts src/lib/managedOrdersLocal.ts src/lib/managerScope.ts supabase/migrations/20260929053816_v10_13_manager_descendant_scope.sql tests/manager-scope.mjs tests/manager-scope-client.mjs
+          git commit -m 'fix: include scoped agency descendants in manager reads v10.13.0'
+          git push origin HEAD:refs/heads/fix/manager-descendant-scope-v10-13
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: manager-scope-verification
+          path: /tmp/manager-scope-verification.log
+          retention-days: 7
