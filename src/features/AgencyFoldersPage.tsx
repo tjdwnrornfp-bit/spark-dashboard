@@ -122,7 +122,7 @@ function demoFolders(user: User, members: User[], rows: ManagedOrderRow[], steps
     })
     return { agencyId: m.id, username: m.username, groupName: m.groupName || '미지정 그룹', totalOrderCount: own.length, matchedOrderCount: matching.filter(r => r.registrantId === m.id).length,
       inProgressCount: own.filter(r => ['입금대기', '입금완료'].includes(r.orderStatus)).length, runningCount: own.filter(r => r.orderStatus === '구동중').length,
-      expiredOrderCount: own.filter(r => r.orderStatus === '만료').length, stoppedCount: own.filter(r => r.orderStatus === '정지').length,
+      expiredCount: own.filter(r => r.orderStatus === '만료').length, stoppedCount: own.filter(r => r.orderStatus === '정지').length,
       settlementWaitingAmount: waiting, settlementCompletedAmount: completed, lastOrderAt: own.map(r => r.createdAt).sort().at(-1) ?? null }
   }).filter(a => a.matchedOrderCount > 0 || (!hasOrderFilter && (!query || a.username.toLocaleLowerCase('ko-KR').includes(query))))
   agencies.sort((a, b) => {
