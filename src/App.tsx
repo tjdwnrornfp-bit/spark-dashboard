@@ -65,6 +65,7 @@ import { todayInSeoul } from './lib/date'
 import { applyScheduledTransitions, createOrder, extractMid, transitionOrder } from './lib/order'
 import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, labelForProgram, PROGRAM_PAGE_MAP } from './lib/program'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
+import { INVALID_SIGNUP_CODE_MESSAGE, registerRemoteMember, SIGNUP_UNAVAILABLE_MESSAGE } from './lib/signup'
 
 function errorMessage(error: unknown, fallback: string): string {
   const values: string[] = []
@@ -83,7 +84,7 @@ function errorMessage(error: unknown, fallback: string): string {
   if (/user already registered|duplicate key|profiles_username_key_key|이미 사용 중/i.test(message)) return '이미 사용 중이거나 가입 신청된 아이디입니다.'
   if (/password/i.test(message) && /short|weak|length/i.test(message)) return '서버 비밀번호 정책에 맞지 않습니다. Supabase 비밀번호 최소 길이 설정을 확인해 주세요.'
   if (/database error saving new user|unexpected_failure|handle_new_auth_user/i.test(message)) {
-    return '회원가입 데이터베이스 연결에 문제가 있습니다. Supabase에서 supabase/update_v9_3_operations_manager.sql 적용 여부를 확인해 주세요.'
+    return SIGNUP_UNAVAILABLE_MESSAGE
   }
   if (!message || message === '{}' || message === '[object Object]') return fallback
   return message
@@ -502,27 +503,11 @@ export default function App() {
     const username = draft.username.normalize('NFKC').trim()
     const referral = draft.referralCode.normalize('NFKC').trim()
     if (isSupabaseConfigured && supabase) {
-      try {
-        const { error } = await supabase.auth.signUp({
-          email: await usernameToAuthEmail(username),
-          password: await passwordToAuthSecret(draft.password),
-          options: {
-            data: {
-              username,
-              username_key: normalizeUsername(username),
-              phone_number: normalizePhoneNumber(draft.phoneNumber),
-              referral_code: referral,
-            },
-          },
-        })
-        if (error) throw error
-        await supabase.auth.signOut()
-        return { ok: true, message: '가입 신청이 완료되었습니다. 승인 후 로그인할 수 있습니다.' }
-      } catch (error) { return { ok: false, message: errorMessage(error, '가입 신청을 처리하지 못했습니다.') } }
+      return registerRemoteMember(supabase, draft)
     }
     if (localMembers.some((member) => normalizeUsername(member.username) === normalizeUsername(username))) return { ok: false, message: '이미 사용 중이거나 가입 신청된 아이디입니다.' }
     const referralOwner = referral ? localMembers.find((member) => member.active && member.approvalStatus === 'approved' && member.role !== 'admin' && [normalizeUsername(member.username), normalizeUsername(member.referralCode)].includes(normalizeUsername(referral))) : null
-    if (referral && !referralOwner) return { ok: false, message: '유효한 추천 또는 관리 코드를 찾을 수 없습니다.' }
+    if (referral && !referralOwner) return { ok: false, message: INVALID_SIGNUP_CODE_MESSAGE }
     const manager = referralOwner?.isOperationsManager ? referralOwner : null
     const sponsor = referralOwner && !referralOwner.isOperationsManager ? referralOwner : null
     const nowIso = new Date().toISOString()
