@@ -84,10 +84,10 @@ const orders=Array.from({length:10000},(_,i)=>({id:`TEST-${String(i).padStart(5,
 const props={user:actor,orders,settings:api.DEFAULT_SETTINGS,now:new Date('2026-09-21T00:00:00Z'),programType:'spark',memberEditRefreshKey:0}
 const desk=host(false);let tree=desk.render(()=>api.OrdersPage(props))
 assert.equal(nodes(tree).filter(n=>n.type==='tr').length,51);assert.equal(nodes(tree).filter(n=>n.type==='article').length,0)
-let checkbox=nodes(tree).find(n=>n.type==='input'&&n.props['aria-label']?.endsWith('선택'));checkbox.props.onClick({shiftKey:false})
+let checkbox=nodes(tree).find(n=>n.type==='input'&&n.props['aria-label']?.endsWith('선택') && n.props['aria-label'] !== '현재 페이지 전체 선택');checkbox.props.onClick({shiftKey:false})
 tree=desk.render(()=>api.OrdersPage(props))
 const pagination=nodes(tree).find(n=>n.type?.name==='Pagination');assert.equal(pagination.props.total,10000);pagination.props.onChange(2)
-tree=desk.render(()=>api.OrdersPage(props));checkbox=nodes(tree).find(n=>n.type==='input'&&n.props['aria-label']?.endsWith('선택'));checkbox.props.onClick({shiftKey:false})
+tree=desk.render(()=>api.OrdersPage(props));checkbox=nodes(tree).find(n=>n.type==='input'&&n.props['aria-label']?.endsWith('선택') && n.props['aria-label'] !== '현재 페이지 전체 선택');checkbox.props.onClick({shiftKey:false})
 tree=desk.render(()=>api.OrdersPage(props));assert.ok(text(tree).includes('2개 선택됨'))
 const exportButton=nodes(tree).find(n=>n.type==='button'&&text(n).includes('선택 엑셀'))
 assert.ok(exportButton,'selected export button exists');await exportButton.props.onClick();await sleep(0);assert.equal(globalThis.perfExport.orders.length,2)

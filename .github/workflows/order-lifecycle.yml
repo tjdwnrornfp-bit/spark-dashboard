@@ -1,0 +1,57 @@
+name: Order lifecycle integration
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: isolated_ci_only
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: isolated_ci_only
+      PGDATABASE: postgres
+      LIFECYCLE_CONCURRENCY_TEST: isolated-ci
+      LIFECYCLE_UI_DIR: /tmp/spark-lifecycle-ui
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - run: python tests/order-lifecycle-concurrency.py
+      - run: |
+          python -m pip install playwright==1.57.0
+          python -m playwright install --with-deps chromium
+      - name: Verify desktop and mobile lifecycle flows
+        run: |
+          node tests/order-lifecycle-browser.mjs
+          python -m http.server 4174 --bind 127.0.0.1 --directory "$LIFECYCLE_UI_DIR" >/tmp/lifecycle-http.log 2>&1 &
+          server=$!
+          trap 'kill "$server" || true' EXIT
+          python tests/order-lifecycle-browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: order-lifecycle-verification
+          path: /tmp/spark-lifecycle-ui/
+          retention-days: 7
