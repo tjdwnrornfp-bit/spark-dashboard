@@ -23,7 +23,7 @@ with sync_playwright() as p:
  requests=page.evaluate("window.calls.filter(c=>c.name==='apply_admin_order_lifecycle_v1014').map(c=>c.args)")
  assert requests[0]==requests[1]
  assert page.evaluate('window.refreshes')==1
- page.screenshot(path=str(out/'archive-result-desktop.png'),full_page=True)
+ page.screenshot(path=str(out/'archive-result-desktop.png'))
  dialog.get_by_role('button',name='닫기',exact=True).last.click()
  expect(page.get_by_text('0개 선택됨',exact=True)).to_be_visible()
  page.get_by_role('button',name='검색 결과 전체 처리',exact=True).click()
@@ -41,7 +41,7 @@ with sync_playwright() as p:
  dialog.get_by_label('대상 48건과 처리 영향을 확인했습니다.').check()
  expect(dialog.get_by_role('button',name='48건 영구 삭제',exact=True)).to_be_disabled()
  dialog.get_by_label('확인을 위해').fill('영구 삭제')
- page.screenshot(path=str(out/'delete-preview-desktop.png'),full_page=True)
+ page.screenshot(path=str(out/'delete-preview-desktop.png'))
  dialog.get_by_role('button',name='48건 영구 삭제',exact=True).click()
  expect(dialog.get_by_role('status')).to_contain_text('영구 삭제 완료 47건 · 실패 1건 · 사전 제외 1건')
  dialog.get_by_role('button',name='닫기',exact=True).last.click()
@@ -49,7 +49,9 @@ with sync_playwright() as p:
  dialog=page.get_by_role('dialog');expect(dialog.get_by_role('checkbox')).to_have_count(4)
  dialog.get_by_role('button',name='대상 확인',exact=True).click()
  assert page.evaluate("window.calls.filter(c=>c.name==='preview_admin_order_lifecycle_v1014').at(-1).args.p_filters.programs.length")==4
- page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(out/'integrated-mobile.png'),full_page=True)
+ page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(out/'integrated-mobile.png'))
+ footer=page.locator('.lifecycle-modal > footer').bounding_box()
+ assert footer['y']>=0 and footer['y']+footer['height']<=844
  assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth')
  dialog.get_by_role('button',name='취소',exact=True).click()
  # Program changes reset the destructive selection scope.

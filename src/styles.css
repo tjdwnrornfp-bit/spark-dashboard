@@ -3781,7 +3781,7 @@ td small { margin-top: 4px; font-size: 10px; }
 .restriction-card small { display: block; margin-bottom: 12px; color: #64748b; }
 /* Administrator bulk lifecycle: shared across all intake programs. */
 .lifecycle-toolbar { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
-.lifecycle-modal { width: min(900px, calc(100vw - 24px)); display: flex; flex-direction: column; overflow: hidden; }
+.lifecycle-modal { width: min(900px, 100%); display: flex; flex-direction: column; overflow: hidden; }
 .lifecycle-modal > header, .lifecycle-modal > footer { flex-shrink: 0; }
 .lifecycle-modal > .modal-body { overflow-y: auto; min-height: 0; }
 .lifecycle-content input:not([type="checkbox"]), .lifecycle-content select, .lifecycle-content textarea { width: 100%; min-width: 0; padding: 9px 10px; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; color: #202329; }
