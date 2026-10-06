@@ -1,0 +1,71 @@
+import json, os
+from pathlib import Path
+from playwright.sync_api import sync_playwright, expect
+out=Path(os.environ.get('LIFECYCLE_UI_DIR','.test-output/lifecycle-ui'))
+with sync_playwright() as p:
+ browser=p.chromium.launch()
+ page=browser.new_page(viewport={'width':1440,'height':1000});errors=[]
+ page.on('pageerror',lambda e:errors.append(str(e)))
+ page.goto('http://127.0.0.1:4174')
+ expect(page.get_by_role('button',name='선택 보관',exact=True)).to_be_disabled()
+ page.get_by_role('button',name='현재 페이지 전체 선택',exact=True).click()
+ expect(page.get_by_text('50개 선택됨',exact=True)).to_be_visible()
+ page.get_by_role('button',name='선택 보관',exact=True).click()
+ dialog=page.get_by_role('dialog');dialog.get_by_role('button',name='대상 확인',exact=True).click()
+ expect(dialog.get_by_text('전체 50건 · 처리 가능 50건 · 제외 0건')).to_be_visible()
+ dialog.get_by_label('공통 처리 사유').fill('운영 목록 정리')
+ dialog.get_by_label('대상 50건과 처리 영향을 확인했습니다.').check()
+ page.evaluate('window.loseResponse=true')
+ dialog.get_by_role('button',name='50건 보관',exact=True).click()
+ retry=dialog.get_by_role('button',name='같은 요청으로 결과 다시 확인',exact=True);expect(retry).to_be_enabled()
+ expect(dialog.get_by_label('공통 처리 사유')).to_be_disabled()
+ retry.click();expect(dialog.get_by_role('status')).to_contain_text('보관 완료 49건 · 실패 1건')
+ requests=page.evaluate("window.calls.filter(c=>c.name==='apply_admin_order_lifecycle_v1014').map(c=>c.args)")
+ assert requests[0]==requests[1]
+ assert page.evaluate('window.refreshes')==1
+ page.screenshot(path=str(out/'archive-result-desktop.png'))
+ dialog.get_by_role('button',name='닫기',exact=True).last.click()
+ expect(page.get_by_text('0개 선택됨',exact=True)).to_be_visible()
+ page.get_by_role('button',name='검색 결과 전체 처리',exact=True).click()
+ page.get_by_role('dialog').get_by_role('button',name='대상 확인',exact=True).click()
+ expect(page.get_by_role('dialog').get_by_text('전체 11건 · 처리 가능 11건 · 제외 0건')).to_be_visible()
+ assert page.evaluate("window.calls.filter(c=>c.name==='preview_admin_order_lifecycle_v1014').at(-1).args.p_order_ids") is None
+ page.get_by_role('dialog').get_by_role('button',name='취소',exact=True).click()
+ # Archive view exposes conditional deletion, and excludes historical rows.
+ page.get_by_role('button',name='보관함',exact=False).click()
+ page.get_by_role('button',name='현재 페이지 전체 선택',exact=True).click()
+ page.get_by_role('button',name='선택 영구 삭제',exact=True).click()
+ dialog=page.get_by_role('dialog');dialog.get_by_role('button',name='대상 확인',exact=True).click()
+ expect(dialog.get_by_text('전체 49건 · 처리 가능 48건 · 제외 1건')).to_be_visible()
+ dialog.get_by_label('공통 처리 사유').fill('오접수 테스트 작업')
+ dialog.get_by_label('대상 48건과 처리 영향을 확인했습니다.').check()
+ expect(dialog.get_by_role('button',name='48건 영구 삭제',exact=True)).to_be_disabled()
+ dialog.get_by_label('확인을 위해').fill('영구 삭제')
+ page.screenshot(path=str(out/'delete-preview-desktop.png'))
+ dialog.get_by_role('button',name='48건 영구 삭제',exact=True).click()
+ expect(dialog.get_by_role('status')).to_contain_text('영구 삭제 완료 47건 · 실패 1건 · 사전 제외 1건')
+ dialog.get_by_role('button',name='닫기',exact=True).last.click()
+ page.get_by_role('button',name='통합 작업 정리',exact=True).click()
+ dialog=page.get_by_role('dialog');expect(dialog.get_by_role('checkbox')).to_have_count(4)
+ dialog.get_by_role('button',name='대상 확인',exact=True).click()
+ assert page.evaluate("window.calls.filter(c=>c.name==='preview_admin_order_lifecycle_v1014').at(-1).args.p_filters.programs.length")==4
+ page.set_viewport_size({'width':390,'height':844});page.screenshot(path=str(out/'integrated-mobile.png'))
+ footer=page.locator('.lifecycle-modal > footer').bounding_box()
+ assert footer['y']>=0 and footer['y']+footer['height']<=844
+ assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth')
+ dialog.get_by_role('button',name='취소',exact=True).click()
+ # Program changes reset the destructive selection scope.
+ page.get_by_role('button',name='spark_plus',exact=True).click()
+ expect(page.get_by_text('0개 선택됨',exact=True)).to_be_visible()
+ page.get_by_role('button',name='운영 작업',exact=True).click()
+ page.get_by_role('button',name='현재 페이지 전체 선택',exact=True).click()
+ expect(page.get_by_text('2개 선택됨',exact=True)).to_be_visible()
+ page.get_by_role('button',name='spark_s',exact=True).click()
+ expect(page.get_by_text('0개 선택됨',exact=True)).to_be_visible()
+ page.get_by_role('button',name='통합 작업 정리',exact=True).click();page.evaluate('window.previewFailure=true')
+ page.get_by_role('dialog').get_by_role('button',name='대상 확인',exact=True).click()
+ expect(page.get_by_role('alert')).to_contain_text('500건을 초과')
+ assert not errors,errors
+ browser.close()
+out.joinpath('result.json').write_text(json.dumps({'passed':True,'checks':['current page vs filtered selection','lost response same-request retry','partial success','blocked deletion and typed confirmation','integrated programs','mobile width','program scope reset','preview failure'],'pageErrors':errors},ensure_ascii=False),encoding='utf-8')
+print('PASS lifecycle desktop/mobile UI: selection, bulk archive/delete, blockers, retry, refresh and failures')

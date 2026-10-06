@@ -24,6 +24,7 @@ const ACTION_LABELS: Record<string, string> = {
   'order.status_changed': '상태 변경',
   'order.archived': '작업 보관',
   'order.restored': '작업 복원',
+  'order.permanently_deleted': '작업 영구 삭제',
   'order.updated': '작업 수정',
   'member.created': '회원 신청',
   'member.updated': '회원 변경',
@@ -39,6 +40,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function metaText(log: AuditLog): string {
+  if (log.action === 'order.permanently_deleted') return `삭제 사유: ${String(log.metadata.reason ?? '-')} · 삭제 전 상태: ${String(log.metadata.status ?? '-')}`
   const values = Object.entries(log.metadata)
     .filter(([, value]) => value !== null && value !== '' && value !== undefined)
     .slice(0, 4)
