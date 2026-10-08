@@ -40,6 +40,7 @@ import { formatWon } from '../lib/money'
 import { labelForProgram, unitLabelForProgram } from '../lib/program'
 import { isSupabaseConfigured } from '../lib/supabase'
 import { PageHeader } from './DashboardPage'
+import { MonthlySettlement } from './MonthlySettlement'
 
 const EMPTY_FILTERS: SettlementFilters = {
   payerId: '',
@@ -136,7 +137,20 @@ function makeLocalOptions(rows: SettlementRow[]): SettlementFilterOptions {
   }
 }
 
-export function SettlementPage({
+export function SettlementPage(props: Parameters<typeof PaymentProcessingPage>[0]) {
+  const [tab, setTab] = useState<'processing' | 'monthly'>('processing')
+  if (props.user.role !== 'admin' || props.user.isOperationsManager) return <PaymentProcessingPage {...props} />
+  return <div className="page-stack settlement-admin-view">
+    <PageHeader title="정산" subtitle="관리자에게 입금되는 최종 정산 금액과 월별 기록을 확인합니다." />
+    <div className="monthly-main-tabs" role="group" aria-label="정산 보기">
+      <button aria-pressed={tab === 'processing'} onClick={() => setTab('processing')}>입금 처리</button>
+      <button aria-pressed={tab === 'monthly'} onClick={() => setTab('monthly')}>월별 현황</button>
+    </div>
+    {tab === 'monthly' ? <MonthlySettlement user={props.user} revision={props.refreshKey} /> : <PaymentProcessingPage {...props} />}
+  </div>
+}
+
+function PaymentProcessingPage({
   user,
   members: _members,
   orders,
@@ -849,7 +863,7 @@ export function SettlementPage({
 
   return (
     <div className="page-stack settlement-page-stack">
-      <PageHeader title="정산" subtitle={user.role === 'admin' ? '관리자에게 입금되는 최종 정산 금액을 확인합니다.' : '하위 대행사 입금과 내가 처리할 정산 내역을 확인합니다.'} />
+      {(user.role !== 'admin' || user.isOperationsManager) && <PageHeader title="정산" subtitle="하위 대행사 입금과 내가 처리할 정산 내역을 확인합니다." />}
 
       <section className={`settlement-cards ${user.role === 'admin' ? '' : 'settlement-cards-four'}`}>
         <article><span>입금 대기 금액</span><strong>{formatWon(activeSummary.waitingAmount)}</strong><small>{activeSummary.waitingCount}건</small></article>

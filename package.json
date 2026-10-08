@@ -1,7 +1,7 @@
 {
   "name": "spark-work-intake-dashboard",
   "private": true,
-  "version": "10.15.0",
+  "version": "10.16.0",
   "type": "module",
   "scripts": {
     "test:admin-date": "node tests/admin-order-date.mjs",
@@ -23,6 +23,7 @@
     "test:manager-scope": "node tests/manager-scope.mjs && node tests/manager-scope-client.mjs",
     "test:signup": "node tests/signup-validation.mjs",
     "test:progress-api": "node tests/progress-api.mjs",
+    "test:monthly": "node tests/monthly-settlement.mjs && node tests/monthly-settlement-client.mjs",
     "test:lifecycle": "node tests/order-lifecycle.mjs && node tests/order-lifecycle-client.mjs"
   },
   "dependencies": {
