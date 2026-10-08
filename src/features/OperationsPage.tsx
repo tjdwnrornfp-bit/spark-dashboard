@@ -32,6 +32,7 @@ const ACTION_LABELS: Record<string, string> = {
   'member.progress_api_key_issued': '진행률 API 키 발급',
   'member.progress_api_key_revoked': '진행률 API 키 중지',
   'payment.confirmed': '입금 확인',
+  'settlement.month_closed': '월별 정산 마감 저장',
   'system.migration': 'DB 업데이트',
 }
 
@@ -42,6 +43,7 @@ function getErrorMessage(error: unknown): string {
 }
 
 function metaText(log: AuditLog): string {
+  if (log.action === 'settlement.month_closed') return `${String(log.metadata.month ?? '').slice(0, 7)} · ${String(log.metadata.version ?? '')}차 마감 · ${String(log.metadata.reason ?? '')}`
   if (log.action === 'member.progress_api_key_issued') return `본인 작업 진행률 조회 · 만료: ${formatDateTime(String(log.metadata.expires_at ?? ''))}`
   if (log.action === 'member.progress_api_key_revoked') return `중지 사유: ${String(log.metadata.reason ?? '-')}`
   if (log.action === 'order.permanently_deleted') return `삭제 사유: ${String(log.metadata.reason ?? '-')} · 삭제 전 상태: ${String(log.metadata.status ?? '-')}`
