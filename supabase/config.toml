@@ -388,6 +388,10 @@ verify_jwt = true
 [functions.reset-member-password]
 verify_jwt = true
 
+# Custom member-specific opaque key authentication is enforced in handler + DB.
+[functions.order-progress]
+verify_jwt = false
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
