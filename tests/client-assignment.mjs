@@ -34,6 +34,9 @@ const { outputFiles } = await build({
     assert.throws(()=>parse(Array.from({length:501},()=>row)),/500/)
     const member = DEMO_USERS.find((m)=>m.username==='agency1')
     assert.deepEqual(assignmentErrors(member,parsed[0].draft),[])
+    const retired = parse([[row[0],'스파크',...row.slice(2)]])[0]
+    assert.match(retired.parseError,/접수가 종료/)
+    assert.ok(assignmentErrors(member,retired.draft).some((message)=>message.includes('접수가 종료')))
     assert.ok(assignmentErrors({...member,active:false},parsed[0].draft).length)
     assert.ok(assignmentErrors({...member,isOperationsManager:true},parsed[0].draft).length)
     assert.ok(assignmentErrors({...member,sparkSPlusPricePerShot:0},parsed[0].draft).length)

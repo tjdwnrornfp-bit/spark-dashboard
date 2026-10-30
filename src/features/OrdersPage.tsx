@@ -153,6 +153,7 @@ export function OrdersPage({ memberEditRefreshKey, onLifecycleFinished, onMember
   const [eligibility, setEligibility] = useState<Map<string, number>>(new Map())
   const [eligibilityError, setEligibilityError] = useState('')
   const selectionAnchor = useRef<string | null>(null)
+  const retired = programType === 'spark'
   const [assignmentMode, setAssignmentMode] = useState<'manual' | 'excel' | null>(null)
   const [correctionOrder, setCorrectionOrder] = useState<Order | null>(null)
   const [bulkRowNumbers, setBulkRowNumbers] = useState<number[]>([])
@@ -459,15 +460,15 @@ export function OrdersPage({ memberEditRefreshKey, onLifecycleFinished, onMember
   return (
     <div className="page-stack orders-page-stack">
       <PageHeader
-        title={user.role === 'admin' ? `${programLabel} 접수` : `${programLabel} 접수`}
-        subtitle={user.role === 'admin' ? `${programLabel} 접수 작업과 상태를 관리합니다.` : `${programLabel} 작업을 개별 또는 엑셀로 대량 접수합니다.`}
-        action={user.role !== 'admin' ? <div className="page-header-actions"><button className="secondary-button small" onClick={downloadBulkTemplate}><Icon name="download" />대량접수 양식</button><button className="secondary-button small" onClick={() => fileInputRef.current?.click()}><Icon name="upload" />대량작업접수</button><button className="primary-button small" onClick={toggleForm}><Icon name={formOpen ? 'close' : 'plus'} />{formOpen ? '접수 닫기' : '접수 신청'}</button><input ref={fileInputRef} className="hidden-file-input" type="file" accept=".xlsx,.xls" onChange={(event) => void readBulkFile(event)} /></div> : <div className="page-header-actions"><button className="primary-button small" onClick={() => setAssignmentMode('manual')}><Icon name="plus" />작업 부여</button><button className="secondary-button small" onClick={() => setAssignmentMode('excel')}><Icon name="upload" />엑셀 일괄 부여</button><button className="secondary-button small" onClick={() => void downloadExcel()}><Icon name="download" />선택 엑셀</button><button className="secondary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></div>}
+        title={retired ? `${programLabel} 기존 작업` : `${programLabel} 접수`}
+        subtitle={retired ? '접수가 종료된 프로그램의 기존 작업과 처리 내역을 확인합니다.' : user.role === 'admin' ? `${programLabel} 접수 작업과 상태를 관리합니다.` : `${programLabel} 작업을 개별 또는 엑셀로 대량 접수합니다.`}
+        action={retired ? <div className="page-header-actions"><span className="muted">접수 종료 · 기존 작업 관리</span>{user.role === 'admin' && <><button className="secondary-button small" onClick={() => void downloadExcel()}><Icon name="download" />선택 엑셀</button><button className="secondary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></>}</div> : user.role !== 'admin' ? <div className="page-header-actions"><button className="secondary-button small" onClick={downloadBulkTemplate}><Icon name="download" />대량접수 양식</button><button className="secondary-button small" onClick={() => fileInputRef.current?.click()}><Icon name="upload" />대량작업접수</button><button className="primary-button small" onClick={toggleForm}><Icon name={formOpen ? 'close' : 'plus'} />{formOpen ? '접수 닫기' : '접수 신청'}</button><input ref={fileInputRef} className="hidden-file-input" type="file" accept=".xlsx,.xls" onChange={(event) => void readBulkFile(event)} /></div> : <div className="page-header-actions"><button className="primary-button small" onClick={() => setAssignmentMode('manual')}><Icon name="plus" />작업 부여</button><button className="secondary-button small" onClick={() => setAssignmentMode('excel')}><Icon name="upload" />엑셀 일괄 부여</button><button className="secondary-button small" onClick={() => void downloadExcel()}><Icon name="download" />선택 엑셀</button><button className="secondary-button small" onClick={() => setIntegratedExportOpen(true)}><Icon name="download" />통합 엑셀</button></div>}
       />
       <StartDateRestrictionNotice state={restrictions} />
-      {user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'manual' && <AdminOrderAssignmentModal programType={programType} onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminAssign} onClose={() => setAssignmentMode(null)} />}
-      {user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'excel' && <AdminBulkOrderAssignmentModal onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminBulkAssign} onClose={() => setAssignmentMode(null)} />}
+      {!retired && user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'manual' && <AdminOrderAssignmentModal programType={programType} onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminAssign} onClose={() => setAssignmentMode(null)} />}
+      {!retired && user.role === 'admin' && !user.isOperationsManager && assignmentMode === 'excel' && <AdminBulkOrderAssignmentModal onLoadMembers={onLoadAssignmentMembers} onAssign={onAdminBulkAssign} onClose={() => setAssignmentMode(null)} />}
 
-      {user.role !== 'admin' && formOpen && <section className="panel intake-form-panel">
+      {!retired && user.role !== 'admin' && formOpen && <section className="panel intake-form-panel">
         <div className="panel-header"><div><h2 className="program-heading"><ProgramIcon programType={programType} size={24} />{programLabel} 접수 신청</h2><p>회원 단가 {formatWon(unitPrice)} / {quantityUnit} · 시작일은 익일부터 직접 지정할 수 있습니다.</p></div></div>
         <div className="form-grid compact-form">
           <Field className="span-2" label="플레이스 URL" required error={errors.placeUrl}><div className="input-with-status"><input value={draft.placeUrl} onChange={(event) => updateDraft('placeUrl', event.target.value)} placeholder="https://m.place.naver.com/place/1234567890/home" />{extractMid(draft.placeUrl) && <span>MID {extractMid(draft.placeUrl)}</span>}</div></Field>

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/Modal'
 import type { BulkProgramTransferPreview, BulkProgramTransferResult, Order, ProgramType } from '../domain/types'
 import { formatWon } from '../lib/money'
-import { labelForProgram, PROGRAMS } from '../lib/program'
+import { labelForProgram, PROGRAMS, ACTIVE_PROGRAMS } from '../lib/program'
 
 function errorMessage(error: unknown): string {
   return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
@@ -24,7 +24,7 @@ export function AdminBulkProgramTransferModal({ orders, onClose, onPreview, onTr
   onFinished: (result: BulkProgramTransferResult) => void
 }) {
   const firstDifferentTarget = useMemo(
-    () => PROGRAMS.find((program) => program.type !== orders[0]?.programType)?.type ?? 'spark',
+    () => ACTIVE_PROGRAMS.find((program) => program.type !== orders[0]?.programType)?.type ?? 'spark_plus',
     [orders],
   )
   const [targetProgram, setTargetProgram] = useState<ProgramType>(firstDifferentTarget)
@@ -86,7 +86,7 @@ export function AdminBulkProgramTransferModal({ orders, onClose, onPreview, onTr
     {!result && <>
       <fieldset className="bulk-transfer-targets" disabled={submitting}>
         <legend>변경 후 프로그램</legend>
-        {PROGRAMS.map((program) => <label key={program.type} className={targetProgram === program.type ? 'active' : ''}>
+        {ACTIVE_PROGRAMS.map((program) => <label key={program.type} className={targetProgram === program.type ? 'active' : ''}>
           <input type="radio" name="bulk-transfer-target" value={program.type} checked={targetProgram === program.type} onChange={() => setTargetProgram(program.type)} />
           <span><strong>{program.label}</strong><small>선택 작업을 {program.label}(으)로 변경</small></span>
         </label>)}

@@ -59,7 +59,7 @@ export function AdminBulkOrderAssignmentModal({ onLoadMembers, onAssign, onClose
     <StartDateRestrictionNotice state={restrictions} />
     {hasRestrictedRows && <p className="form-error" role="alert">시작일 제한 오류가 있어 파일을 제출할 수 없습니다. 표시된 행을 수정한 뒤 엑셀을 다시 선택해 주세요.</p>}
     <div className="assignment-file-actions"><button className="secondary-button small" onClick={downloadAssignmentTemplate}>관리자 양식 다운로드</button><button className="primary-button small" disabled={loading || submitting} onClick={() => { if (!started || window.confirm('이미 성공한 행을 제외한 파일만 다시 선택하세요. 새 파일은 새 요청으로 처리됩니다. 계속하시겠습니까?')) fileRef.current?.click() }}>엑셀 선택</button><input ref={fileRef} hidden type="file" accept=".xlsx,.xls" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; void upload(file) }} /></div>
-    <p className="muted">프로그램: 스파크 / 스파크+ / 스파크S / 스파크S+ (s 소문자 허용). 시작일은 익일부터 지정하세요.</p>
+    <p className="muted">프로그램: 스파크+ / 스파크S / 스파크S+ (s 소문자 허용). 시작일은 익일부터 지정하세요.</p>
     {loading && <p role="status">회원 정보를 불러오는 중입니다.</p>}
     {error && <p className="assignment-errors" role="alert">{error}</p>}
     {valid.some((item) => intakeWarning(item.row.draft)) && <div className="intake-warning"><p>확인 필요 경고 {valid.filter((item) => intakeWarning(item.row.draft)).length}건</p><label><input type="checkbox" disabled={submitting} checked={warningsAccepted} onChange={(e) => setWarningsAccepted(e.target.checked)} />경고 행의 수량·기간을 확인했으며 그대로 부여합니다.</label></div>}

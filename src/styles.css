@@ -3863,3 +3863,7 @@ td small { margin-top: 4px; font-size: 10px; }
 .monthly-month-control input,.monthly-filter-row input,.monthly-filter-row select,.monthly-snapshot-row select,.monthly-close-content textarea { border:1px solid #dce3ef;border-radius:8px;background:#fff;padding:9px 11px;color:#24354d; }
 .settlement-admin-view,.monthly-settlement { grid-template-columns:minmax(0,1fr);min-width:0; }.monthly-settlement > .panel { min-width:0; }.monthly-table-wrap { max-width:100%; }
 .monthly-settlement .panel-header > span { white-space:nowrap; flex-shrink:0; }
+
+/* Three available program prices; old records keep their historical labels. */
+.myinfo-price-grid { grid-template-columns:repeat(3,minmax(0,1fr)); }
+@media(max-width:700px) { .myinfo-price-grid { grid-template-columns:1fr; } }

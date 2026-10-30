@@ -97,10 +97,7 @@ export function MyInfoPage({ user, onPasswordChange, onAccountChange }: {
         <section className="panel myinfo-program-panel">
           <div className="panel-header"><div><h2>프로그램별 단가</h2><p>접수 시점의 단가가 주문과 정산 내역에 고정됩니다.</p></div></div>
           <div className="myinfo-price-grid">
-            <article className="myinfo-price-card">
-              <ProgramIcon programType="spark" size={48} />
-              <div><span>스파크</span><strong>{formatWon(prices.spark)}</strong><small>1타 기준</small></div>
-            </article>
+
             <article className="myinfo-price-card">
               <ProgramIcon programType="spark_plus" size={48} />
               <div><span>스파크 +</span><strong>{formatWon(prices.spark_plus)}</strong><small>1타 기준</small></div>

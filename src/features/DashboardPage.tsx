@@ -12,7 +12,7 @@ import { StatusBadge } from '../components/StatusBadge'
 import type { ManagedOrdersPreset, Notice, Order, Page, PaymentStep, User } from '../domain/types'
 import { formatDate, daysRemaining, todayInSeoul } from '../lib/date'
 import { formatWon } from '../lib/money'
-import { PROGRAMS, programOrders } from '../lib/program'
+import { PROGRAMS, ACTIVE_PROGRAMS, programOrders } from '../lib/program'
 import { ManagerDashboard } from './ManagerDashboard'
 
 function adminRegistrantLabel(order: Order): string {
@@ -93,11 +93,14 @@ function StandardDashboard({ user, orders, paymentSteps, notices, now, serverMod
   const activeRunningPage = serverMode ? remoteRunning.data?.page ?? runningPage : Math.min(runningPage, Math.max(1, Math.ceil(runningCount / 50)))
   const running = serverMode ? remoteRunning.data?.rows ?? [] : local!.running.slice((activeRunningPage - 1) * 50, activeRunningPage * 50)
   const pinnedNotice = notices.find((notice) => notice.pinned)
-  const programSummaries = PROGRAMS.map((program) => ({ ...program, total: 0, waiting: 0, paid: 0, running: 0, expired: 0, ...stats.programSummaries.find((summary) => summary.type === program.type) }))
+  const hasLegacyOrders = stats.programSummaries.some(summary => summary.type === 'spark' && summary.total > 0)
+  const legacyLink = hasLegacyOrders ? <button className="text-button" onClick={() => onNavigate('sparkOrders')}>종료된 프로그램 작업 조회</button> : null
+  const programSummaries = ACTIVE_PROGRAMS.map((program) => ({ ...program, total: 0, waiting: 0, paid: 0, running: 0, expired: 0, ...stats.programSummaries.find((summary) => summary.type === program.type) }))
   if (user.role !== 'admin') {
     return (
       <div className="page-stack dashboard-page-stack">
         <PageHeader title="대시보드" subtitle={`${user.username}님, 안녕하세요. 오늘 현황을 확인하세요.`} />
+        {legacyLink}
         {pinnedNotice && <button className="notice-strip" onClick={() => onNavigate('notices')}><Icon name="notice" /><span>{pinnedNotice.title}</span><Icon name="chevron" /></button>}
         <section className="daily-summary-card">
           <div><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}<small>타</small></strong><p>구동중 {runningCount}건 · 스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건</p></div>
@@ -140,6 +143,7 @@ function StandardDashboard({ user, orders, paymentSteps, notices, now, serverMod
   return (
     <div className="page-stack dashboard-page-stack">
       <PageHeader title="대시보드" subtitle="전체 작업 수량과 관리자 정산 현황을 확인합니다." />
+      {legacyLink}
       <section className="admin-kpi-card">
         <div><span>전체 타수</span><strong>{totalContractShots.toLocaleString('ko-KR')}<small>타</small></strong><p>스파크S 전체 {totalContractCases.toLocaleString('ko-KR')}건 · 스파크S+ 전체 {totalContractSPlusCases.toLocaleString('ko-KR')}건</p></div>
         <div className="admin-kpi-side"><span>오늘 구동 타수</span><strong>{runningShots.toLocaleString('ko-KR')}</strong><small>스파크S {runningCases.toLocaleString('ko-KR')}건 · 스파크S+ {runningSPlusCases.toLocaleString('ko-KR')}건 · 구동중 {runningCount}건</small></div>
@@ -150,7 +154,7 @@ function StandardDashboard({ user, orders, paymentSteps, notices, now, serverMod
         <MiniStat label="총 정산 금액" value={formatWon(totalAmount)} />
       </section>
       <section className="panel compact-panel dashboard-progress-panel program-summary-panel">
-        <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>네 프로그램의 접수와 운영 상태를 분리해 관리합니다.</p></div></div>
+        <div className="panel-header"><div><h2>프로그램별 접수 현황</h2><p>세 프로그램의 접수와 운영 상태를 분리해 관리합니다.</p></div></div>
         <div className="program-dashboard-grid">
           {programSummaries.map((summary) => <button key={summary.type} className="program-summary-card" onClick={() => onNavigate(summary.page)}><div className="program-summary-head"><ProgramIcon programType={summary.type} size={40} /><strong>{summary.label}</strong></div><div className="program-summary-body"><span>전체 {summary.total}건</span><span>입금대기 {summary.waiting}건</span><span>입금완료 {summary.paid}건</span><span>구동중 {summary.running}건</span><span>만료 {summary.expired}건</span></div></button>)}
         </div>
@@ -161,7 +165,7 @@ function StandardDashboard({ user, orders, paymentSteps, notices, now, serverMod
           <div className="status-distribution"><div className="distribution-bar">{statusCounts.map((item) => <i key={item.label} className={`bar-${item.label}`} style={{ width: `${item.value / total * 100}%` }} />)}</div><div className="distribution-legend">{statusCounts.map((item) => <span key={item.label}><i className={`dot-${item.label}`} />{item.label} <b>{item.value}</b></span>)}</div></div>
         </section>
         <section className="panel compact-panel recent-orders-panel">
-          <div className="panel-header"><div><h2>최근 접수</h2><p>최근 등록된 작업입니다.</p></div><button className="text-button" onClick={() => onNavigate('sparkOrders')}>접수 보기 <Icon name="chevron" /></button></div>
+          <div className="panel-header"><div><h2>최근 접수</h2><p>최근 등록된 작업입니다.</p></div><button className="text-button" onClick={() => onNavigate('sparkPlusOrders')}>접수 보기 <Icon name="chevron" /></button></div>
           {recent.length === 0 ? <EmptyState text="접수된 작업이 없습니다." /> : <div className="simple-table-wrap"><table className="simple-table"><thead><tr><th>프로그램</th><th>등록 그룹</th><th>상호명</th><th>시작일</th><th>남은기간</th><th>상태</th></tr></thead><tbody>{recent.map((order) => <tr key={order.id}><td>{PROGRAMS.find((program) => program.type === order.programType)?.label}</td><td>{adminRegistrantLabel(order)}</td><td><strong>{order.storeName}</strong><small>{order.keyword}</small></td><td>{formatDate(order.startDate)}</td><td>{String(daysRemaining(order.startDate, order.endDate, today))}</td><td><StatusBadge status={order.status} /></td></tr>)}</tbody></table></div>}
         </section>
       </section>

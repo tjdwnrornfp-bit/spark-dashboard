@@ -28,6 +28,8 @@ const ACTION_LABELS: Record<string, string> = {
   'order.updated': '작업 수정',
   'member.created': '회원 신청',
   'member.updated': '회원 변경',
+  'member.spark_plus_price_adjusted': '스파크+ 단가 일괄 조정',
+  'member.active_programs_reviewed': '회원 승인·단가 변경',
   'member.password_reset': '비밀번호 재설정',
   'member.progress_api_key_issued': '진행률 API 키 발급',
   'member.progress_api_key_revoked': '진행률 API 키 중지',
@@ -43,6 +45,8 @@ function getErrorMessage(error: unknown): string {
 }
 
 function metaText(log: AuditLog): string {
+  if (log.action === 'member.spark_plus_price_adjusted') return `스파크+ ${String(log.metadata.before)}원 → ${String(log.metadata.after)}원 · ${String(log.metadata.reason ?? '')}`
+  if (log.action === 'member.active_programs_reviewed') return `스파크+ ${String(log.metadata.sparkPlusBefore)}원 → ${String(log.metadata.sparkPlusAfter)}원 · ${log.metadata.approvalStatus === 'approved' ? '승인' : '반려'}`
   if (log.action === 'settlement.month_closed') return `${String(log.metadata.month ?? '').slice(0, 7)} · ${String(log.metadata.version ?? '')}차 마감 · ${String(log.metadata.reason ?? '')}`
   if (log.action === 'member.progress_api_key_issued') return `본인 작업 진행률 조회 · 만료: ${formatDateTime(String(log.metadata.expires_at ?? ''))}`
   if (log.action === 'member.progress_api_key_revoked') return `중지 사유: ${String(log.metadata.reason ?? '-')}`
