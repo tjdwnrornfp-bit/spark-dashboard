@@ -93,8 +93,7 @@ function StandardDashboard({ user, orders, paymentSteps, notices, now, serverMod
   const activeRunningPage = serverMode ? remoteRunning.data?.page ?? runningPage : Math.min(runningPage, Math.max(1, Math.ceil(runningCount / 50)))
   const running = serverMode ? remoteRunning.data?.rows ?? [] : local!.running.slice((activeRunningPage - 1) * 50, activeRunningPage * 50)
   const pinnedNotice = notices.find((notice) => notice.pinned)
-  const hasLegacyOrders = stats.programSummaries.some(summary => summary.type === 'spark' && summary.total > 0)
-  const legacyLink = hasLegacyOrders ? <button className="text-button" onClick={() => onNavigate('sparkOrders')}>종료된 프로그램 작업 조회</button> : null
+  const legacyLink = <button className="text-button" onClick={() => onNavigate('sparkOrders')}>종료된 프로그램 작업 조회</button>
   const programSummaries = ACTIVE_PROGRAMS.map((program) => ({ ...program, total: 0, waiting: 0, paid: 0, running: 0, expired: 0, ...stats.programSummaries.find((summary) => summary.type === program.type) }))
   if (user.role !== 'admin') {
     return (

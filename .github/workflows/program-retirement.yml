@@ -8,7 +8,7 @@ permissions:
   contents: read
 jobs:
   program-retirement:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     env:
       RETIREMENT_UI_DIR: /tmp/spark-retirement-ui
