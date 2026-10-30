@@ -4,7 +4,7 @@ import { normalizeUsername } from './auth'
 import { ADMIN_EXCEL_PROGRAM_LABELS } from './adminExcel'
 import { earliestOrderStartDate } from './date'
 import { validateDraft } from './order'
-import { getUserProgramPrice } from './program'
+import { getUserProgramPrice, isActiveProgram } from './program'
 
 export interface AdminAssignmentRow {
   rowNumber: number
@@ -33,6 +33,7 @@ export function isAssignmentTarget(member: User): boolean {
 
 export function assignmentErrors(member: User | undefined, draft: OrderDraft, now = new Date()): string[] {
   const errors = Object.values(validateDraft(draft, now))
+  if (!isActiveProgram(draft.programType)) errors.unshift('스파크는 접수가 종료되었습니다. 다른 프로그램을 선택해 주세요.')
   if (!member) errors.unshift('회원을 찾을 수 없습니다.')
   else if (!isAssignmentTarget(member)) errors.unshift('승인된 활성 대행사 또는 총판만 선택할 수 있습니다.')
   else if (getUserProgramPrice(member, draft.programType) <= 0) errors.unshift('해당 회원의 프로그램 승인 단가가 설정되지 않았습니다.')
@@ -66,7 +67,7 @@ export function readAssignmentWorkbook(data: ArrayBuffer): AdminAssignmentRow[] 
     const programLabel = cell(1)
     const programType = parseAssignmentProgram(programLabel)
     result.push({ rowNumber: index + 2, targetUsername: normalizeUsername(cell(0)), programLabel,
-      parseError: programType ? undefined : '프로그램은 스파크, 스파크+, 스파크S, 스파크S+ 중 하나여야 합니다.',
+      parseError: programType === 'spark' ? '스파크는 접수가 종료되었습니다.' : programType ? undefined : '프로그램은 스파크+, 스파크S, 스파크S+ 중 하나여야 합니다.',
       draft: { programType: programType ?? 'spark', storeName: cell(2), keyword: cell(3), placeUrl: cell(4), dailyShots: cell(5), operationDays: cell(6), startDate: excelDate(row[7]), memo: cell(8) } })
   })
   if (!result.length) throw new Error('입력된 작업이 없습니다.')

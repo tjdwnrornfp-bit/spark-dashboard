@@ -710,11 +710,10 @@ export async function resetRemoteMemberPassword(memberId: string, newPassword: s
 
 export async function reviewRemoteMember(params: Omit<MemberReviewInput, 'member'> & { memberId: string; memberUpdatedAt: string }): Promise<User> {
   const client = requiredClient()
-  const { data, error } = await client.rpc('review_member_v10', {
+  const { data, error } = await client.rpc('review_member_v1017', {
     p_member_id: params.memberId,
     p_role: params.role === 'manager' ? 'agency' : params.role,
     p_is_operations_manager: params.role === 'manager',
-    p_spark_price_per_shot: params.prices.spark,
     p_spark_plus_price_per_shot: params.prices.spark_plus,
     p_spark_s_price_per_shot: params.prices.spark_s,
     p_spark_s_plus_price_per_shot: params.prices.spark_s_plus,

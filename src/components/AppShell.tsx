@@ -9,7 +9,6 @@ const NAV_ITEMS: Array<{ page: Page; label: string; icon?: IconName; programType
   { page: 'notifications', label: '알림센터', icon: 'bell' },
   { page: 'downlineOrders', label: '하위 작업', icon: 'orders' },
   { page: 'managedOrders', label: '관리 작업', icon: 'orders' },
-  { page: 'sparkOrders', label: '스파크 접수', programType: 'spark' },
   { page: 'sparkPlusOrders', label: '스파크 + 접수', programType: 'spark_plus' },
   { page: 'sparkSOrders', label: '스파크S 접수', programType: 'spark_s' },
   { page: 'sparkSPlusOrders', label: '스파크S+ 접수', programType: 'spark_s_plus' },

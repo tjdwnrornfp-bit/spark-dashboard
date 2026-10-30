@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { Modal } from '../components/Modal'
 import type { Order, ProgramTransferPreview, ProgramType } from '../domain/types'
 import { formatWon } from '../lib/money'
-import { labelForProgram, PROGRAMS, unitLabelForProgram, unitPriceLabelForProgram } from '../lib/program'
+import { labelForProgram, ACTIVE_PROGRAMS, unitLabelForProgram, unitPriceLabelForProgram } from '../lib/program'
 
 function errorMessage(error: unknown): string {
   return error && typeof error === 'object' && 'message' in error && typeof error.message === 'string'
@@ -21,7 +21,7 @@ export function AdminProgramTransferModal({ order, onClose, onPreview, onTransfe
   onPreview: (order: Order, targetProgram: ProgramType) => Promise<ProgramTransferPreview>
   onTransfer: (order: Order, targetProgram: ProgramType, reason: string) => Promise<void>
 }) {
-  const targets = useMemo(() => PROGRAMS.filter((program) => program.type !== order.programType), [order.programType])
+  const targets = useMemo(() => ACTIVE_PROGRAMS.filter((program) => program.type !== order.programType), [order.programType])
   const [targetProgram, setTargetProgram] = useState<ProgramType>(targets[0]?.type ?? 'spark')
   const [preview, setPreview] = useState<ProgramTransferPreview | null>(null)
   const [reason, setReason] = useState('')

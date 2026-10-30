@@ -7,6 +7,16 @@ export const PROGRAMS: Array<{ type: ProgramType; label: string; shortLabel: str
   { type: 'spark_s_plus', label: '스파크S+', shortLabel: 'SPARK S+', page: 'sparkSPlusOrders', orderPrefix: 'SPSP', sheetName: '스파크S플러스접수' },
 ]
 
+// Keep the full catalog for existing orders, exports and settlement history.
+export const ACTIVE_PROGRAMS = PROGRAMS.filter((program) => program.type !== 'spark')
+export const isActiveProgram = (type: ProgramType) => ACTIVE_PROGRAMS.some((program) => program.type === type)
+
+// The one-time price adjustment can leave existing parent/child rates at 35.
+// Keeping that rate during an edit is allowed; new rates still require a margin.
+export function canKeepAdjustedPlusPrice(member: User, next: number, parent: number): boolean {
+  return member.approvalStatus === 'approved' && member.active && member.sparkPlusPricePerShot === 35 && next === 35 && parent === 35
+}
+
 export const PROGRAM_PAGE_MAP: Record<Page, ProgramType | null> = {
   dashboard: null,
   notifications: null,
@@ -75,7 +85,7 @@ export function applyProgramPrices(user: User, prices: ProgramPriceMap): User {
 
 export function formatProgramPrices(user: User): string {
   const prices = getProgramPriceMap(user)
-  return `스파크 ${prices.spark.toLocaleString('ko-KR')}원 · 스파크 + ${prices.spark_plus.toLocaleString('ko-KR')}원 · 스파크S ${prices.spark_s.toLocaleString('ko-KR')}원 · 스파크S+ ${prices.spark_s_plus.toLocaleString('ko-KR')}원`
+  return ACTIVE_PROGRAMS.map((program) => `${program.label} ${prices[program.type].toLocaleString('ko-KR')}원`).join(' · ')
 }
 
 export function programOrders(orders: Order[], programType: ProgramType): Order[] {

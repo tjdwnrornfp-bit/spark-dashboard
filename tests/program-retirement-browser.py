@@ -1,0 +1,58 @@
+import os,time,json
+from pathlib import Path
+from playwright.sync_api import sync_playwright,expect
+out=Path(os.environ.get('RETIREMENT_UI_DIR','.test-output/retirement-ui'))
+with sync_playwright() as p:
+ browser=p.chromium.launch();page=browser.new_page(viewport={'width':1440,'height':1000});errors=[]
+ page.on('pageerror',lambda e:errors.append(str(e)))
+ for attempt in range(80):
+  try:page.goto('http://127.0.0.1:4177');break
+  except Exception:
+   if attempt==79:raise
+   time.sleep(.25)
+ expect(page.locator('nav').get_by_role('button',name='스파크 접수',exact=True)).to_have_count(0)
+ expect(page.locator('.program-summary-card')).to_have_count(3)
+ page.screenshot(path=str(out/'dashboard-desktop.png'),full_page=True)
+ page.get_by_role('button',name='종료된 프로그램 작업 조회').click()
+ expect(page.get_by_role('button',name='작업 부여',exact=True)).to_have_count(0)
+ expect(page.get_by_text('보존된 기존 작업',exact=True).first).to_be_visible()
+ page.locator('nav').get_by_role('button',name='스파크 + 접수',exact=True).click()
+ page.get_by_role('button',name='작업 부여',exact=True).click();dialog=page.get_by_role('dialog')
+ expect(dialog.get_by_label('프로그램 *').locator('option')).to_have_count(3)
+ expect(dialog.get_by_label('프로그램 *').locator('option[value="spark"]')).to_have_count(0)
+ dialog.get_by_role('button',name='닫기',exact=True).last.click()
+ page.locator('nav').get_by_role('button',name='회원관리',exact=True).click()
+ expect(page.locator('.members-table th').filter(has_text='스파크').filter(has_text='+')).not_to_have_count(0)
+ expect(page.locator('.members-table').get_by_role('columnheader',name='스파크',exact=True)).to_have_count(0)
+ row=page.locator('.desktop-table tbody tr').filter(has=page.get_by_text('test_pending',exact=True))
+ row.get_by_role('button',name='검토',exact=True).click();editor=page.locator('.desktop-table .member-editor')
+ expect(editor.get_by_label('스파크 단가',exact=True)).to_have_count(0)
+ editor.get_by_label('스파크 + 단가').fill('35')
+ editor.get_by_label('스파크S 단가').fill('40')
+ editor.get_by_label('스파크S+ 단가').fill('40')
+ editor.get_by_role('button',name='승인',exact=True).click()
+ expect(row.get_by_role('button',name='수정',exact=True)).to_be_visible()
+ expect(page.locator('.desktop-table .member-editor')).to_have_count(0)
+ page.get_by_label('테스트 계정').select_option('22222222-2222-4222-8222-222222222222')
+ page.locator('nav').get_by_role('button',name='내 정보',exact=True).click()
+ expect(page.locator('.myinfo-price-card')).to_have_count(3)
+ expect(page.locator('.myinfo-price-card').first).to_contain_text('35원')
+ page.screenshot(path=str(out/'prices-desktop.png'),full_page=True)
+ page.set_viewport_size({'width':390,'height':844})
+ page.wait_for_function("document.querySelector('.sidebar').getBoundingClientRect().right <= 1")
+ page.screenshot(path=str(out/'prices-mobile.png'),full_page=True)
+ assert page.evaluate('document.documentElement.scrollWidth<=window.innerWidth')
+ page.locator('.mobile-header .icon-button').click()
+ expect(page.locator('nav').get_by_role('button',name='스파크 접수',exact=True)).to_have_count(0)
+ page.locator('nav').get_by_role('button',name='대시보드',exact=True).click()
+ page.get_by_role('button',name='종료된 프로그램 작업 조회').click()
+ expect(page.get_by_role('button',name='접수 신청',exact=True)).to_have_count(0)
+ expect(page.get_by_role('button',name='대량작업접수',exact=True)).to_have_count(0)
+ page.wait_for_function("document.querySelector('.sidebar').getBoundingClientRect().right <= 1")
+ expect(page.get_by_text('수정 권한을 확인하지 못했습니다.',exact=False)).to_have_count(0)
+ expect(page.get_by_role('button',name='수정',exact=True)).to_be_enabled()
+ page.screenshot(path=str(out/'history-mobile.png'),full_page=True)
+ assert not errors,errors
+ browser.close()
+out.joinpath('result.json').write_text(json.dumps({'passed':True,'checks':['three active programs','no Spark tab desktop/mobile','legacy work accessible without intake','assignment choices','three member prices','real HTTP/database pending approval without retired rate','updated own price'],'pageErrors':errors},ensure_ascii=False),encoding='utf-8')
+print('PASS retirement UI: desktop/mobile navigation, legacy work, active choices, pricing and actual client-to-database approval')

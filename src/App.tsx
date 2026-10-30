@@ -63,7 +63,7 @@ import { hashPassword, normalizePhoneNumber, normalizeUsername, passwordToAuthSe
 import { calculateAmount } from './lib/money'
 import { todayInSeoul } from './lib/date'
 import { applyScheduledTransitions, createOrder, extractMid, transitionOrder } from './lib/order'
-import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, labelForProgram, PROGRAM_PAGE_MAP } from './lib/program'
+import { applyProgramPrices, getProgramPriceMap, getUserProgramPrice, labelForProgram, PROGRAM_PAGE_MAP, canKeepAdjustedPlusPrice } from './lib/program'
 import { isSupabaseConfigured, supabase } from './lib/supabase'
 import { INVALID_SIGNUP_CODE_MESSAGE, registerRemoteMember, SIGNUP_UNAVAILABLE_MESSAGE } from './lib/signup'
 
@@ -1026,11 +1026,11 @@ export default function App() {
     }
     if (!actorIsAdmin && !actorIsManager && params.approvalStatus === 'approved') {
       const myPrices = getProgramPriceMap(user)
-      if (params.prices.spark <= myPrices.spark || params.prices.spark_plus <= myPrices.spark_plus || params.prices.spark_s <= myPrices.spark_s || params.prices.spark_s_plus <= myPrices.spark_s_plus) throw new Error('하위 회원의 각 프로그램 단가는 내 단가보다 높아야 합니다.')
+      if ((params.prices.spark_plus <= myPrices.spark_plus && !canKeepAdjustedPlusPrice(target, params.prices.spark_plus, myPrices.spark_plus)) || params.prices.spark_s <= myPrices.spark_s || params.prices.spark_s_plus <= myPrices.spark_s_plus) throw new Error('하위 회원의 각 프로그램 단가는 내 단가보다 높아야 합니다.')
     }
     const makeManager = actorIsAdmin && !target.sponsorId && !target.managerId && params.role === 'manager'
     const nowIso = new Date().toISOString()
-    const nextPrices = makeManager ? { spark: 1, spark_plus: 1, spark_s: 1, spark_s_plus: 40 } : params.approvalStatus === 'approved' ? params.prices : getProgramPriceMap(target)
+    const nextPrices = makeManager ? { spark: Math.max(1, target.sparkPricePerShot), spark_plus: Math.max(1, target.sparkPlusPricePerShot), spark_s: 1, spark_s_plus: 40 } : params.approvalStatus === 'approved' ? { ...params.prices, spark: Math.max(1, target.sparkPricePerShot) } : getProgramPriceMap(target)
     const updated: User = applyProgramPrices({
       ...target,
       role: target.sponsorId || target.managerId ? 'agency' : makeManager ? 'agency' : params.role === 'manager' ? 'agency' : params.role,
@@ -1042,7 +1042,7 @@ export default function App() {
       updatedAt: nowIso,
     }, nextPrices)
     setLocalMembers((current) => current.map((member) => member.id === target.id ? updated : member))
-    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: nowIso, userId: target.id, role: 'all', title: params.approvalStatus === 'approved' ? '회원가입 승인 완료' : '회원가입 반려', message: params.approvalStatus !== 'approved' ? '회원가입 신청이 반려되었습니다.' : makeManager ? '중간관리자 계정으로 승인되었습니다. 관리 코드로 가입한 대행사를 승인하고 단가를 지정할 수 있습니다.' : `승인되었습니다. 스파크 ${params.prices.spark}원 / 스파크+ ${params.prices.spark_plus}원 / 스파크S ${params.prices.spark_s}원 / 스파크S+ ${params.prices.spark_s_plus}원입니다.`, read: false }, ...current])
+    setLocalNotifications((current) => [{ id: crypto.randomUUID(), createdAt: nowIso, userId: target.id, role: 'all', title: params.approvalStatus === 'approved' ? '회원가입 승인 완료' : '회원가입 반려', message: params.approvalStatus !== 'approved' ? '회원가입 신청이 반려되었습니다.' : makeManager ? '중간관리자 계정으로 승인되었습니다. 관리 코드로 가입한 대행사를 승인하고 단가를 지정할 수 있습니다.' : `승인되었습니다. 스파크+ ${params.prices.spark_plus}원 / 스파크S ${params.prices.spark_s}원 / 스파크S+ ${params.prices.spark_s_plus}원입니다.`, read: false }, ...current])
   }
 
   const handleAccountChange = async (account: AccountDraft) => {
@@ -1213,7 +1213,7 @@ export default function App() {
     {renderedPage === 'notifications' && !isSupabaseConfigured && <NotificationsPage user={user} notifications={notifications} hasMore={false} loadingMore={false} onLoadMore={async () => {}} onRead={handleNotificationRead} onReadAll={handleNotificationsReadAll} onDelete={handleNotificationDelete} onDeleteAll={handleNotificationsDeleteAll} />}
     {renderedPage === 'downlineOrders' && canViewDownline && <DownlineOrdersPage key={user.id} user={user} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} />}
     {renderedPage === 'managedOrders' && user.isOperationsManager === true && <ManagedOrdersPage key={user.id} user={user} members={members} orders={orders} paymentSteps={paymentSteps} serverMode={isSupabaseConfigured} refreshKey={serverDataRevision} initialFilters={managedOrderPreset} />}
-    {activeProgram && !user.isOperationsManager && <OrdersPage key={user.id} memberEditRefreshKey={serverDataRevision} onLifecycleFinished={refreshOrderEffectsRemote} onMemberEditPreview={previewRemoteMemberOrderEdit} onMemberEditApply={handleMemberOrderEdit} onCorrectionPreview={previewRemoteOrderCorrection} onCorrectionApply={handleOrderCorrection} onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
+    {activeProgram && !user.isOperationsManager && <OrdersPage key={`${user.id}:${activeProgram}`} memberEditRefreshKey={serverDataRevision} onLifecycleFinished={refreshOrderEffectsRemote} onMemberEditPreview={previewRemoteMemberOrderEdit} onMemberEditApply={handleMemberOrderEdit} onCorrectionPreview={previewRemoteOrderCorrection} onCorrectionApply={handleOrderCorrection} onLoadAssignmentMembers={loadAssignmentMembers} onAdminAssign={handleAdminAssign} onAdminBulkAssign={handleAdminBulkAssign} user={user} orders={orders} settings={settings} now={now} programType={activeProgram} onCreateOrder={handleCreateOrder} onCreateOrdersBulk={handleCreateOrdersBulk} onStatusChange={handleOrderStatusChange} onBulkProgramTransferPreview={handleBulkProgramTransferPreview} onBulkProgramTransfer={handleBulkProgramTransfer} onArchiveOrder={handleArchiveOrder} onRestoreOrder={handleRestoreOrder} />}
     {renderedPage === 'settlement' && !user.isOperationsManager && <SettlementPage key={user.id} user={user} members={members} orders={orders} paymentSteps={paymentSteps} paymentAccount={paymentAccount} settings={settings} refreshKey={serverDataRevision} onSettingsChange={handleSettingsChange} onConfirmPayment={handleConfirmPayment} onReversePayment={handleReversePayment} onConfirmSettlementQuote={handleConfirmSettlementQuote} />}
     {renderedPage === 'members' && <MembersPage key={user.id} user={user} members={members} onReview={handleMemberReview} onAssignManager={handleMemberManagerAssignment} onBulkAssignManager={handleBulkMemberManagerAssignment} onCheckDeletion={handleMemberDeletionCheck} onDeleteMember={handleMemberDelete} onResetPassword={handleMemberPasswordReset} />}
     {renderedPage === 'startDateRestrictions' && user.role === 'admin' && !user.isOperationsManager && <StartDateRestrictionsPage key={user.id} user={user} />}

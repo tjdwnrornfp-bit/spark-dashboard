@@ -21,7 +21,7 @@ const old={id:'OLD-1',dbId:'old',createdBy:'member',creatorUsername:'agency1',st
 function Calendar(){const restrictions=useStartDateRestrictions();const [date,setDate]=useState('2099-01-09');return <section className='panel restriction-editor'><StartDateRestrictionNotice state={restrictions}/><StartDateInput value={date} onChange={setDate} min='2099-01-01' restrictions={restrictions}/></section>}
 function App(){const [tab,setTab]=useState('admin');return <main className='fixture-main'><nav className='fixture-nav'>{['admin','calendar','intake','adminExcel','edit'].map(t=><button key={t} onClick={()=>setTab(t)}>{t}</button>)}</nav>
 {tab==='admin'&&<StartDateRestrictionsPage user={admin}/>}{tab==='calendar'&&<Calendar/>}
-{tab==='intake'&&<OrdersPage user={member} orders={[]} settings={DEFAULT_SETTINGS} now={new Date()} programType='spark' memberEditRefreshKey={0} onCreateOrder={async(d)=>{window.fixtureCalls.push(d);return {...old,startDate:d.startDate}}} onCreateOrdersBulk={async(d)=>{window.fixtureCalls.push(d);return d.map(x=>({...old,startDate:x.startDate}))}}/>}
+{tab==='intake'&&<OrdersPage user={member} orders={[]} settings={DEFAULT_SETTINGS} now={new Date()} programType='spark_plus' memberEditRefreshKey={0} onCreateOrder={async(d)=>{window.fixtureCalls.push(d);return {...old,programType:d.programType,startDate:d.startDate}}} onCreateOrdersBulk={async(d)=>{window.fixtureCalls.push(d);return d.map(x=>({...old,programType:x.programType,startDate:x.startDate}))}}/>}
 {tab==='adminExcel'&&<AdminBulkOrderAssignmentModal onLoadMembers={async()=>[member]} onAssign={async(rows)=>{window.fixtureCalls.push(rows);return []}} onClose={()=>setTab('admin')}/>}
 {tab==='edit'&&<MemberOrderEditModal order={old} programOnly={false} onPreview={async(o,d)=>{window.fixtureCalls.push(d);return {allowed:true,before:{},after:{program_type:'spark'},financialImpact:'financial_neutral',differenceAmount:0}}} onApply={async()=>old} onClose={()=>setTab('admin')}/>}
 </main>};createRoot(document.getElementById('root')).render(<App/>);
@@ -44,7 +44,7 @@ fs.copyFileSync('src/styles.css',path.join(out,'style.css'))
 fs.writeFileSync(path.join(out,'index.html'),`<!doctype html><html lang="ko"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/style.css"><style>.fixture-main{max-width:1100px;margin:20px auto;padding:12px}.fixture-nav{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap}</style><div id="root"></div><script type="module" src="/app.js"></script></html>`)
 for(const admin of [false,true])for(const blocked of [false,true]){
  const book=utils.book_new();const headers=admin?['등록자아이디','프로그램','상호명','대표키워드','플레이스URL','일일수량','구동일수','시작일','메모']:['상호명','대표키워드','플레이스URL','일일수량','구동일수','시작일','메모'];
- const row=(date)=>[...(admin?['agency1','스파크']:[]),'엑셀테스트','키워드','https://m.place.naver.com/place/123/home',100,10,date,''];
+ const row=(date)=>[...(admin?['agency1','스파크+']:[]),'엑셀테스트','키워드','https://m.place.naver.com/place/123/home',100,10,date,''];
  utils.book_append_sheet(book,utils.aoa_to_sheet([headers,row('2099-01-13'),row(blocked?'2099-01-11':'2099-01-14')]),'접수');fs.writeFileSync(path.join(out,`${admin?'admin':'member'}-${blocked?'blocked':'allowed'}.xlsx`),write(book,{type:'buffer',bookType:'xlsx'}));
 }
 console.log('Browser fixture built:',out)

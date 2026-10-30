@@ -8,7 +8,7 @@ import type { Order, OrderDraft, ProgramType, User } from '../domain/types'
 import { assignmentErrorMessage, assignmentErrors, emptyAssignmentDraft, isAssignmentTarget } from '../lib/adminAssignment'
 import { earliestOrderStartDate } from '../lib/date'
 import { calculateAmount, formatWon } from '../lib/money'
-import { getUserProgramPrice, PROGRAMS } from '../lib/program'
+import { getUserProgramPrice, ACTIVE_PROGRAMS } from '../lib/program'
 
 export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign, onClose }: {
   programType: ProgramType
@@ -57,7 +57,7 @@ export function AdminOrderAssignmentModal({ programType, onLoadMembers, onAssign
         <label className="field"><span>그룹명 필터</span><select value={group} onChange={(event) => { setGroup(event.target.value); setTargetId(''); setRequestId(crypto.randomUUID()) }}><option value="">전체 그룹</option>{[...new Set(eligible.map((item) => item.groupName).filter(Boolean))].sort().map((name) => <option key={name}>{name}</option>)}</select></label>
         <label className="field"><span>회원 아이디 검색</span><input value={query} onChange={(event) => { setQuery(event.target.value); setTargetId('') }} placeholder="회원 아이디 입력" /></label>
         <label className="field"><span>대상 회원 *</span><select value={targetId} onChange={(event) => { setTargetId(event.target.value); setRequestId(crypto.randomUUID()); setErrors([]) }}><option value="">회원을 선택해 주세요</option>{options.map((item) => <option key={item.id} value={item.id}>{item.username} · {item.groupName || '미지정 그룹'}</option>)}</select></label>
-        <label className="field"><span>프로그램 *</span><select value={draft.programType} onChange={(event) => edit('programType', event.target.value)}>{PROGRAMS.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}</select></label>
+        <label className="field"><span>프로그램 *</span><select value={draft.programType} onChange={(event) => edit('programType', event.target.value)}>{ACTIVE_PROGRAMS.map((item) => <option key={item.type} value={item.type}>{item.label}</option>)}</select></label>
         {member && <p className="assignment-member-info span-2">그룹: {member.groupName || '미지정'} · 유형: {member.role === 'agency' ? '대행사' : '총판'} · 관리담당: {member.managerUsername || '없음'} · 정산 상위: {member.sponsorUsername || '관리자 직결'}</p>}
         <label className="field"><span>상호명 *</span><input value={draft.storeName} maxLength={50} onChange={(event) => edit('storeName', event.target.value)} /></label>
         <label className="field"><span>대표 키워드 *</span><input value={draft.keyword} maxLength={50} onChange={(event) => edit('keyword', event.target.value)} /></label>
